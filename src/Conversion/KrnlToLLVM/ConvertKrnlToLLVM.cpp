@@ -194,10 +194,13 @@ void populateAffineAndKrnlToLLVMConversion(RewritePatternSet &patterns,
 
   vector::populateVectorToVectorCanonicalizationPatterns(patterns);
   vector::populateVectorBroadcastLoweringPatterns(patterns);
+      vector::populateVectorMaskOpLoweringPatterns(patterns);
   vector::populateVectorContractLoweringPatterns(
       patterns, vector::VectorTransformsOptions());
   vector::populateVectorTransposeLoweringPatterns(
       patterns, vector::VectorTransformsOptions());
+          mlir::vector::populateVectorTransferLoweringPatterns(patterns, 99);
+    vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
   vector::populateVectorShapeCastLoweringPatterns(patterns);
 
   populateAffineToStdConversionPatterns(patterns);

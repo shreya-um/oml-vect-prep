@@ -34,6 +34,25 @@
 #include <functional>
 #include <mutex>
 
+
+#include <iostream>
+
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/Dialect/Affine/Utils.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Builders.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
+#include "mlir/Dialect/Vector/TransformOps/VectorTransformOps.h"
+ #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+
 #define DEBUG_TYPE "krnl_to_affine"
 
 using namespace mlir;
@@ -1040,7 +1059,78 @@ void ConvertKrnlToAffinePass::runOnOperation() {
   }
 
   delete currUnrollAndJamList;
+
+
+
+  mlir::affine::ReductionLoopMap reductionLoops;
+
+
+
+  funcOp.walk([&](AffineForOp forOp) {
+   // Check if the loop contains another affine.for loop
+   bool isInnermost = true;
+   for (Operation &op : forOp.getBody()->getOperations()) {
+     if (isa<AffineForOp>(&op)) {
+       isInnermost = false;
+       break;
+     }
+   }
+
+
+   // If this is an innermost loop, vectorize it
+   if (isInnermost) {
+     llvm::DenseSet<mlir::Operation*> loops_2;
+     loops_2.insert(forOp);
+     auto tripcount = mlir::affine::getConstantTripCount(forOp);
+
+       if (tripcount.has_value()) {}
+
+     for (Operation &op : forOp.getBody()->getOperations()) {
+        std::cout << "in for Op walk" << std::endl;
+        op.dump();
+          if (auto addOp = dyn_cast<arith::AddFOp>(&op)) { // Identify reduction operation
+            std::cout << "in add Op walk" << std::endl;
+              Value lhs = addOp.getLhs();
+              Value rhs = addOp.getRhs();
+
+
+                  reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, lhs});
+                reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, rhs});
+                std::cout << "after loop reduction reduction size >>>>>>>>>" << reductionLoops.size() << std::endl;
+            std::cout << "after loop reduction for loop args size >>>>>>>>>" << forOp.getNumIterOperands() << std::endl;
+
+          }
+      }
+
+//     llvm::DenseSet<mlir::Operation*> loops_2;
+//   loops_2.insert(forOp);
+//   auto tripcount = mlir::affine::getConstantTripCount(forOp);
+
+     if (tripcount.has_value() && tripcount.value() == 7) {}
+
+   mlir::affine::vectorizeAffineLoops(forOp, loops_2, {16}, {0}, reductionLoops = reductionLoops);
+   }
+  });
+
+
+  auto countLoops = 0;
+  auto countLoopsAll = 0;
+  funcOp.walk([&](AffineForOp forOp) {
+    llvm::DenseSet<mlir::Operation*> loops_2;
+ //std::cout << "just before forOp insert" << std::endl;
+     loops_2.insert(forOp);
+    forOp.walk([&](AffineForOp op) {
+ // std::cout << "just before forOp walk" << std::endl;
+
+ auto tripcount = mlir::affine::getConstantTripCount(op);
+      countLoopsAll++;
+
+ });
+
+      });
+
 }
+
 
 std::unique_ptr<Pass> createConvertKrnlToAffinePass() {
   return std::make_unique<ConvertKrnlToAffinePass>();

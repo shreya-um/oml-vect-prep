@@ -39,6 +39,14 @@
 #include "src/Dialect/ONNX/ONNXDialect.hpp"
 #include "src/Pass/Passes.hpp"
 
+
+#include "mlir/Dialect/Affine/Passes.h"
+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
+#include "mlir/Dialect/Vector/Transforms/Passes.h"
+
+
+#include <iostream>
+
 using namespace mlir;
 
 namespace onnx_mlir {
@@ -215,6 +223,7 @@ void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
 void addKrnlToAffinePasses(mlir::PassManager &pm) {
   pm.addNestedPass<func::FuncOp>(
       onnx_mlir::krnl::createConvertKrnlToAffinePass());
+      pm.addNestedPass<func::FuncOp>(mlir::vector::createLowerVectorMaskPass());
 }
 
 void addKrnlToLLVMPasses(
@@ -224,6 +233,7 @@ void addKrnlToLLVMPasses(
     // TODO: enable this by default when we make sure it works flawlessly.
     pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToSCFPass());
+  pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToLLVMPass());
   pm.addPass(mlir::createLowerAffinePass());
 
   // Early introduction of omp causes problems with bufferization, delay for
