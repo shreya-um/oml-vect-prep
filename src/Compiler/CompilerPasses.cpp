@@ -215,6 +215,13 @@ void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
 void addKrnlToAffinePasses(mlir::PassManager &pm) {
   pm.addNestedPass<func::FuncOp>(
       onnx_mlir::krnl::createConvertKrnlToAffinePass());
+
+  pm.addPass(mlir::createPrintIRPass());
+
+  //    pm.addPass(mlir::affine::createAffineLoopInvariantCodeMotionPass());
+  //    pm.addPass(mlir::affine::createLoopUnrollPass(7, true, true));
+  //        pm.addPass(mlir::affine::createLoopUnrollPass(7, true, true));
+  //            pm.addPass(mlir::affine::createLoopFusionPass(0, 0, true, mlir::affine::FusionMode::Greedy));
 }
 
 void addKrnlToLLVMPasses(

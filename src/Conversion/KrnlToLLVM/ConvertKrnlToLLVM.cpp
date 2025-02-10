@@ -66,6 +66,8 @@
 #include "src/Pass/Passes.hpp"
 #include "src/Support/Common.hpp"
 
+#include <iostream>
+
 using namespace mlir;
 
 #define DEBUG_TYPE "krnl_to_llvm"
@@ -199,6 +201,8 @@ void populateAffineAndKrnlToLLVMConversion(RewritePatternSet &patterns,
   vector::populateVectorTransposeLoweringPatterns(
       patterns, vector::VectorTransformsOptions());
   vector::populateVectorShapeCastLoweringPatterns(patterns);
+      vector::populateVectorTransferLoweringPatterns(patterns);
+    vector::populateVectorTransferPermutationMapLoweringPatterns(patterns);
 
   populateAffineToStdConversionPatterns(patterns);
   populateSCFToControlFlowConversionPatterns(patterns);
