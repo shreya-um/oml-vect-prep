@@ -216,7 +216,7 @@ void addKrnlToAffinePasses(mlir::PassManager &pm) {
   pm.addNestedPass<func::FuncOp>(
       onnx_mlir::krnl::createConvertKrnlToAffinePass());
 
-  pm.addPass(mlir::createPrintIRPass());
+//  pm.addPass(mlir::createPrintIRPass());
 
   //    pm.addPass(mlir::affine::createAffineLoopInvariantCodeMotionPass());
   //    pm.addPass(mlir::affine::createLoopUnrollPass(7, true, true));
