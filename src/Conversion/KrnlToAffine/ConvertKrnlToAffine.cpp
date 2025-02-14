@@ -863,9 +863,13 @@ struct ConvertKrnlToAffinePass
     : public PassWrapper<ConvertKrnlToAffinePass, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertKrnlToAffinePass);
 
+  int veln_v;
+  ConvertKrnlToAffinePass(int veln_v) : veln_v(veln_v) {}
+
   StringRef getArgument() const override { return "convert-krnl-to-affine"; }
 
   StringRef getDescription() const override { return "Lower Krnl dialect."; }
+//  std::cout<< "option printing >>>>>>>>>>>>>>>" <<options <<std::endl;
 
   void runOnOperation() final;
 };
@@ -1062,9 +1066,11 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 
 
 
+
   mlir::affine::ReductionLoopMap reductionLoops;
 
-
+//  std::cout << "Options value: " << options << std::endl;
+  std::cout << "after loop reduction reduction size >>>>>>>>>" << veln_v << std::endl;
 
   funcOp.walk([&](AffineForOp forOp) {
    // Check if the loop contains another affine.for loop
@@ -1108,7 +1114,7 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 
      if (tripcount.has_value() && tripcount.value() == 7) {}
 
-   mlir::affine::vectorizeAffineLoops(forOp, loops_2, {16}, {0}, reductionLoops = reductionLoops);
+   mlir::affine::vectorizeAffineLoops(forOp, loops_2, {veln_v}, {0}, reductionLoops = reductionLoops);
    }
   });
 
@@ -1132,8 +1138,8 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 }
 
 
-std::unique_ptr<Pass> createConvertKrnlToAffinePass() {
-  return std::make_unique<ConvertKrnlToAffinePass>();
+std::unique_ptr<Pass> createConvertKrnlToAffinePass(int options) {
+  return std::make_unique<ConvertKrnlToAffinePass>(options);
 }
 
 void populateKrnlToAffineConversion(TypeConverter &typeConverter,
