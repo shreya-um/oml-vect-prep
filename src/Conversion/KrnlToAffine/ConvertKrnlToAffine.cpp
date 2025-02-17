@@ -862,6 +862,9 @@ struct ConvertKrnlToAffinePass
     : public PassWrapper<ConvertKrnlToAffinePass, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertKrnlToAffinePass);
 
+  int veln_v;
+  ConvertKrnlToAffinePass(int veln_v) : veln_v(veln_v) {}
+
   StringRef getArgument() const override { return "convert-krnl-to-affine"; }
 
   StringRef getDescription() const override { return "Lower Krnl dialect."; }
@@ -1075,7 +1078,7 @@ void ConvertKrnlToAffinePass::runOnOperation() {
       auto tripcount = mlir::affine::getConstantTripCount(forOp);
 
         if (tripcount.has_value()) {}
-      mlir::affine::vectorizeAffineLoops(forOp, loops_2, {4}, {0});
+      mlir::affine::vectorizeAffineLoops(forOp, loops_2, {veln_v}, {0});
    //             std::cout << "tripcount >>>>>>>>>>>>>>>>>>>>>>>>>>>>>"  << tripcount.value() << std::endl;}
    //   llvm::errs() << "Vectorizing innermost loop: >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n";
    //   forOp.dump();
@@ -1087,8 +1090,8 @@ void ConvertKrnlToAffinePass::runOnOperation() {
    });
 }
 
-std::unique_ptr<Pass> createConvertKrnlToAffinePass() {
-  return std::make_unique<ConvertKrnlToAffinePass>();
+std::unique_ptr<Pass> createConvertKrnlToAffinePass(int vlen) {
+  return std::make_unique<ConvertKrnlToAffinePass>(vlen);
 }
 
 void populateKrnlToAffineConversion(TypeConverter &typeConverter,

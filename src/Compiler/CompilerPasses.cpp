@@ -39,9 +39,16 @@
 #include "src/Dialect/ONNX/ONNXDialect.hpp"
 #include "src/Pass/Passes.hpp"
 
+#include "llvm/Support/CommandLine.h"
+
 using namespace mlir;
 
 namespace onnx_mlir {
+
+  llvm::cl::opt<int> vlen(
+        "vlen",
+        llvm::cl::desc("affine vector lenght"),
+        llvm::cl::init(4));
 
 void configurePasses() {
   // Handle deprecated mcpu.
@@ -124,6 +131,7 @@ void addONNXToMLIRPasses(mlir::PassManager &pm, bool targetCPU,
       }
     }
   }
+    pm.addPass(mlir::createPrintIRPass());
 
   // Simplify shape-related ops.
   pm.addPass(onnx_mlir::createSimplifyShapeRelatedOpsPass());
@@ -213,8 +221,10 @@ void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
 }
 
 void addKrnlToAffinePasses(mlir::PassManager &pm) {
+  int veln_v = vlen.getValue();
+
   pm.addNestedPass<func::FuncOp>(
-      onnx_mlir::krnl::createConvertKrnlToAffinePass());
+      onnx_mlir::krnl::createConvertKrnlToAffinePass(veln_v));
 
 //  pm.addPass(mlir::createPrintIRPass());
 

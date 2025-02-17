@@ -32,7 +32,7 @@ using namespace mlir;
 
 namespace onnx_mlir {
 
-void registerOMPasses(int optLevel) {
+void registerOMPasses(int optLevel, int vlen) {
   // All passes implemented within onnx-mlir should register within this
   // function to make themselves available as a command-line option.
 
@@ -86,8 +86,8 @@ void registerOMPasses(int optLevel) {
     return createONNXPreKrnlVerifyPass();
   });
 
-  mlir::registerPass([]() -> std::unique_ptr<mlir::Pass> {
-    return krnl::createConvertKrnlToAffinePass();
+  mlir::registerPass([vlen]() -> std::unique_ptr<mlir::Pass> {
+    return krnl::createConvertKrnlToAffinePass(vlen);
   });
 
   mlir::registerPass([optLevel]() -> std::unique_ptr<mlir::Pass> {
@@ -179,10 +179,10 @@ void registerMLIRPasses() {
   });
 }
 
-void registerPasses(int optLevel) {
+void registerPasses(int optLevel, int vlen) {
   registerMLIRPasses();
 
-  registerOMPasses(optLevel);
+  registerOMPasses(optLevel, vlen);
 
   // Register passes for accelerators.
   for (auto *accel : accel::Accelerator::getAccelerators())
