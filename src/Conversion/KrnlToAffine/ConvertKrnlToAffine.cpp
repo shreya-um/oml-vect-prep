@@ -15,6 +15,7 @@
 #include "mlir/Analysis/DataLayoutAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -52,6 +53,7 @@
 #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
 #include "mlir/Dialect/Vector/TransformOps/VectorTransformOps.h"
  #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+#include "mlir/IR/OpDefinition.h"
 
 #define DEBUG_TYPE "krnl_to_affine"
 
@@ -157,6 +159,112 @@ std::mutex unrollAndJamMutex;
 // }
 //
 // As specified by the high-level Krnl Dialect.
+  struct ReplaceMulFOpPattern : public OpRewritePattern<math::FmaOp> {
+  using OpRewritePattern<math::FmaOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::AddFOp addop, arith::MulFOp mulop, PatternRewriter &rewriter) {
+    std::cout << "op dump >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    // Create a new `math::MulFOp` with the same operands
+    match(addop);
+    auto newMulOp = rewriter.create<math::FmaOp>(mulop.getLoc(), mulop.getLhs(), mulop.getRhs(), addop.getLhs());
+newMulOp.dump();
+    // Replace the old op with the new one
+    rewriter.replaceOp(addop, newMulOp);
+std::cout << "rewrited >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+rewriter.eraseOp(mulop);
+    return success();
+  }
+
+      LogicalResult match(arith::AddFOp op) {
+        std::cout << "in match" << std::endl;
+     return success();
+  }
+};
+
+struct UpLoadOpPattern : public OpRewritePattern<affine::AffineLoadOp> {
+  using OpRewritePattern<affine::AffineLoadOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(affine::AffineLoadOp loadOp, PatternRewriter &rewriter) {
+    std::cout << "op dump UpLoadOpPattern >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    // Create a new `math::MulFOp` with the same operands
+    // match(addop);
+
+    // mlir::ValueRange indices(loadOp.getIndices().begin(),
+    //                           loadOp.getIndices().end());
+    //                           for (const auto &val : indices) {
+    //                             val.dump(); // If `Value` has a `.dump()` method
+    //                           }
+    //                           mlir::ValueRange reorderedIndices = {indices[0], indices[1], indices[3], indices[2]};
+
+    mlir::SmallVector<mlir::Value> indices(loadOp.getIndices().begin(),
+                                       loadOp.getIndices().end());
+
+// Dump original indices
+for (const auto &val : indices) {
+    val.dump(); 
+}
+
+// Reorder indices in a new SmallVector
+mlir::SmallVector<mlir::Value> reorderedIndices = {indices[1], indices[0]};
+
+// Convert reordered SmallVector to ValueRange
+mlir::ValueRange reorderedValueRange(reorderedIndices);
+        auto newLoadOp = rewriter.create<affine::AffineLoadOp>(loadOp.getLoc(), loadOp.getMemRef(), reorderedValueRange);
+        newLoadOp.dump();
+    // Replace the old op with the new one
+    rewriter.replaceOp(loadOp, newLoadOp);
+std::cout << "rewrited newloadOp UpLoadOpPattern >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+// rewriter.eraseOp(loadOp);
+    return success();
+  }
+
+      LogicalResult match(affine::AffineLoadOp loadOp) {
+        std::cout << "in match" << std::endl;
+     return success();
+  }
+};
+
+// void applyLoadOp(mlir::MLIRContext *context, mlir::PatternRewriter &rewriter, mlir::affine::LoadOp loadOp, SmallVector<Value> indices) {
+//   UpLoadOpPattern pattern(context);
+//   pattern.matchAndRewrite(loadOp, indices, rewriter);
+// }
+
+  struct AdTransposeOpPattern : public OpRewritePattern<memref::TransposeOp> {
+    using OpRewritePattern<memref::TransposeOp>::OpRewritePattern;
+
+    LogicalResult matchAndRewrite(mlir::func::FuncOp funcOp, mlir::arith::ConstantOp constant, PatternRewriter &rewriter) {
+      std::cout << "op dump >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+      // Create a new `math::MulFOp` with the same operands
+      mlir::Block &entryBlock = funcOp.getBody().front();
+      if (!entryBlock.args_empty()) {
+        entryBlock.getArgument(1);
+        SmallVector<int64_t, 4> perm = {0, 1, 3, 2};
+//      auto newTransOp = rewriter.create<memref::TransposeOp>(funcOp.getLoc(), entryBlock.getArgument(1), perm);
+        auto affineMap = AffineMap::getPermutationMap(perm, rewriter.getContext());
+
+        // Convert AffineMap to AffineMapAttr
+        auto affineMapAttr = AffineMapAttr::get(affineMap);
+
+        // Create the TransposeOp with the correct arguments
+        auto newTransOp = rewriter.create<memref::TransposeOp>(
+            funcOp.getLoc(),                // Location
+            entryBlock.getArgument(1),       // Input memref
+            affineMapAttr                    // Corrected AffineMapAttr for permutation
+        );
+      newTransOp.dump();
+        newTransOp.getResult().dump();
+      // Replace the old op with the new one
+      rewriter.moveOpAfter(newTransOp, constant);
+      std::cout << "rewrited >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+
+      //  auto newLoadOp = rewriter.create<affine::AffineLoadOp>(loadOp.getLoc(), newTransOp.getResult(), loadOp.getIndices());
+      //  newLoadOp.dump();
+//      rewriter.eraseOp(mulop);
+      return success();
+      }
+    }
+  };
+
 class LoopBodyMover {
 public:
   /*!
@@ -1064,7 +1172,149 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 
   delete currUnrollAndJamList;
 
+  vector::TransposeOp transposeOp;
+  arith::ConstantOp constantOpLoc;
 
+//   funcOp.walk([&](arith::ConstantOp constantOp) {
+//     if (dyn_cast<arith::ConstantOp>(&constantOp))
+//     constantOpLoc = constantOp;
+//     std::cout << " get func operand" << std::endl;
+// //    funcOp.getBlockOperands()[0].dump();
+// //    PatternRewriter rewriter(ctx);
+//     mlir::Block &entryBlock = funcOp.getBody().front();
+
+//     // Dump the first argument of the function
+//     if (!entryBlock.args_empty()) {
+//         entryBlock.getArgument(1);
+//     } else {
+//       std::cout << " get func operand else " << std::endl;
+//       }
+// //         rewriter.setInsertionPointAfter(constantOp);
+// //    applyPattern(ctx, rewriter, addOp, mulOp);
+//     });
+//    PatternRewriter rewriter(ctx);
+//            rewriter.setInsertionPointAfter(constantOpLoc);
+//            applyTransposeCus(ctx, rewriter, funcOp, constantOpLoc);
+
+//            funcOp.dump();
+//
+
+//
+//    transOp = dyn_cast<memref::TransposeOp>(&op);
+//    std::cout << "test 1227" << std::endl;
+//    std::cout << op.getNumResults() << std::endl;
+//    op.getOpResult(1).dump();
+
+//  arith::AddFOp addOp;
+//  arith::MulFOp mulOp;
+////
+//  funcOp.walk([&](AffineForOp forOp) {
+// // Check if the loop contains another affine.for loop
+// bool isInnermost = true;
+// for (Operation &op : forOp.getBody()->getOperations()) {
+//   if (isa<AffineForOp>(&op)) {
+//     isInnermost = false;
+//     break;
+//   }
+//// }
+//    if (isInnermost) {
+//      if (dyn_cast<arith::MulFOp>(&op)){
+//        mulOp = dyn_cast<arith::MulFOp>(&op);
+//    }
+//    if (dyn_cast<arith::AddFOp>(&op)) {
+//        addOp = dyn_cast<arith::AddFOp>(&op);
+//         }
+//    }
+//    }
+//   });
+//
+// PatternRewriter rewriter(ctx);
+//         rewriter.setInsertionPointAfter(mulOp);
+//         applyPattern(ctx, rewriter, addOp, mulOp);
+//
+
+//funcOp.dump();
+//
+//funcOp.walk([&](AffineForOp forOp) {
+//    // Check if the loop contains another affine.for loop
+//    bool isInnermost = true;
+//    for (Operation &op : forOp.getBody()->getOperations()) {
+//        if (isa<AffineForOp>(&op)) {
+//            isInnermost = false;
+//            break;
+//        }
+//    }
+//
+//    if (isInnermost) {
+//        llvm::DenseSet<mlir::Operation*> loops_2;
+//        loops_2.insert(forOp);
+//        auto tripcount = mlir::affine::getConstantTripCount(forOp);
+//
+//        if (tripcount.has_value()) {
+//            // Add any necessary code here
+//        }
+//
+//        mlir::affine::vectorizeAffineLoops(forOp, loops_2, {4}, {0});
+//    }
+//});
+
+
+memref::TransposeOp transOp;
+
+
+// funcOp.walk([&](AffineForOp forOp) {
+//   // if (dyn_cast<memref::TransposeOp>(&traOp))
+//   // transOp = traOp;
+//   std::cout << " get func operand" << std::endl;
+// //    funcOp.getBlockOperands()[0].dump();
+// //    PatternRewriter rewriter(ctx);
+//   mlir::Block &entryBlock = funcOp.getBody().front();
+
+//   // Dump the first argument of the function
+// //         rewriter.setInsertionPointAfter(constantOp);
+// //    applyPattern(ctx, rewriter, addOp, mulOp);
+//   });
+
+  affine::AffineLoadOp loadOp;
+  funcOp.walk([&](AffineForOp forOp) {
+// Check if the loop contains another affine.for loop
+bool isInnermost = true;
+for (Operation &op : forOp.getBody()->getOperations()) {
+if (isa<AffineForOp>(&op)) {
+  isInnermost = false;
+  break;
+}
+// }
+ if (isInnermost) {
+   if (dyn_cast<affine::AffineLoadOp>(&op)){
+       loadOp = dyn_cast<affine::AffineLoadOp>(&op);
+       std::cout << "print 0 - 4" << std::endl;
+      //  loadOp.getIndices(1).dump();
+      //  loadOp.getIndices()[1].dump();
+      //  loadOp.getIndices()[2].dump();
+      //  loadOp.getIndices()[3].dump();
+      SmallVector<Value> indices(loadOp.getIndices().begin(),
+                              loadOp.getIndices().end());
+                              for (const auto &val : indices) {
+                                val.dump(); // If `Value` has a `.dump()` method
+                              }
+
+
+   }
+ }
+ }
+});
+// funcOp.dump();
+
+PatternRewriter rewriter3(ctx);
+rewriter3.setInsertionPointAfter(loadOp);
+applyLoadOp(ctx, rewriter3, loadOp);
+//
+//  PatternRewriter rewriter(ctx);
+//  rewriter.setInsertionPointAfter(loadOp);
+//  applyTransposeCus(ctx, rewriter, loadOp, constantOpLoc);
+
+// funcOp.dump();
 
 
   mlir::affine::ReductionLoopMap reductionLoops;
@@ -1073,11 +1323,15 @@ void ConvertKrnlToAffinePass::runOnOperation() {
   std::cout << "after loop reduction reduction size >>>>>>>>>" << veln_v << std::endl;
 
   funcOp.walk([&](AffineForOp forOp) {
+    std::cout << "forOp iter args test" << std::endl;
+//    forOp.getRegionIterArgs()[0].dump();
    // Check if the loop contains another affine.for loop
    bool isInnermost = true;
+   std::cout << "set to true" << std::endl;
    for (Operation &op : forOp.getBody()->getOperations()) {
      if (isa<AffineForOp>(&op)) {
        isInnermost = false;
+          std::cout << "breaking" << std::endl;
        break;
      }
    }
@@ -1085,8 +1339,11 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 
    // If this is an innermost loop, vectorize it
    if (isInnermost) {
+     std::cout << "in inner most ...." << std::endl;
      llvm::DenseSet<mlir::Operation*> loops_2;
      loops_2.insert(forOp);
+     std::cout << "loops_2" << std::endl;
+     forOp.dump();
      auto tripcount = mlir::affine::getConstantTripCount(forOp);
 
        if (tripcount.has_value()) {}
@@ -1094,10 +1351,14 @@ void ConvertKrnlToAffinePass::runOnOperation() {
      for (Operation &op : forOp.getBody()->getOperations()) {
         std::cout << "in for Op walk" << std::endl;
         op.dump();
-          if (auto addOp = dyn_cast<arith::AddFOp>(&op)) { // Identify reduction operation
+//          if (auto addOp = dyn_cast<math::FmaOp>(&op)) { // Identify reduction operation -> for FMA
+       if (auto addOp = dyn_cast<arith::AddFOp>(&op)) {
             std::cout << "in add Op walk" << std::endl;
               Value lhs = addOp.getLhs();
               Value rhs = addOp.getRhs();
+std::cout <<" addOp 3rd op "<< std::endl;
+addOp.getOperand(0).dump();
+addOp.getOperand(1).dump();
 
 
                   reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, lhs});
@@ -1112,29 +1373,34 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 //   loops_2.insert(forOp);
 //   auto tripcount = mlir::affine::getConstantTripCount(forOp);
 
-     if (tripcount.has_value() && tripcount.value() == 7) {}
+//     if (tripcount.has_value() && tripcount.value() == 7) {}
 
    mlir::affine::vectorizeAffineLoops(forOp, loops_2, {veln_v}, {0}, reductionLoops = reductionLoops);
+   std::cout << "test here line 1203" << std::endl;
+     std::cout << "test here line 1203" << std::endl;
+     std::cout << "test here line 1203" << std::endl;
+   funcOp.dump();
    }
+//      break;
   });
 
 
-  auto countLoops = 0;
-  auto countLoopsAll = 0;
-  funcOp.walk([&](AffineForOp forOp) {
-    llvm::DenseSet<mlir::Operation*> loops_2;
- //std::cout << "just before forOp insert" << std::endl;
-     loops_2.insert(forOp);
-    forOp.walk([&](AffineForOp op) {
- // std::cout << "just before forOp walk" << std::endl;
-
- auto tripcount = mlir::affine::getConstantTripCount(op);
-      countLoopsAll++;
-
- });
-
-      });
-
+//  auto countLoops = 0;
+//  auto countLoopsAll = 0;
+//  funcOp.walk([&](AffineForOp forOp) {
+//    llvm::DenseSet<mlir::Operation*> loops_2;
+// //std::cout << "just before forOp insert" << std::endl;
+//     loops_2.insert(forOp);
+//    forOp.walk([&](AffineForOp op) {
+// // std::cout << "just before forOp walk" << std::endl;
+//
+// auto tripcount = mlir::affine::getConstantTripCount(op);
+//      countLoopsAll++;
+//std::cout << "in line 1217" << std::endl;
+// });
+//
+//      });
+//std::cout << "in line 1221" << std::endl;
 }
 
 
@@ -1155,6 +1421,20 @@ void populateKrnlToAffineConversion(TypeConverter &typeConverter,
   krnl::populateLoweringKrnlMemsetOpPattern(typeConverter, patterns, ctx);
   krnl::populateLoweringKrnlPrefetchOpPattern(typeConverter, patterns, ctx);
   krnl::populateLoweringKrnlTerminatorOpPattern(typeConverter, patterns, ctx);
+}
+
+void applyPattern(mlir::MLIRContext *context, mlir::PatternRewriter &rewriter, mlir::arith::AddFOp op, mlir::arith::MulFOp mul) {
+    ReplaceMulFOpPattern pattern(context);
+    pattern.matchAndRewrite(op, mul, rewriter);
+}
+  void applyTransposeCus(mlir::MLIRContext *context, mlir::PatternRewriter &rewriter, mlir::func::FuncOp funcOp, mlir::arith::ConstantOp constant) {
+  AdTransposeOpPattern pattern(context);
+  pattern.matchAndRewrite(funcOp, constant, rewriter);
+}
+
+void applyLoadOp(mlir::MLIRContext *context, mlir::PatternRewriter &rewriter, mlir::affine::AffineLoadOp loadOp) {
+  UpLoadOpPattern pattern(context);
+  pattern.matchAndRewrite(loadOp, rewriter);
 }
 
 } // namespace krnl

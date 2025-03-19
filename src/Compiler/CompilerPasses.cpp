@@ -230,6 +230,7 @@ void addKrnlToAffinePasses(mlir::PassManager &pm) {
   int veln_v = vlen.getValue();
   pm.addNestedPass<func::FuncOp>(
       onnx_mlir::krnl::createConvertKrnlToAffinePass(veln_v));
+//  pm.addPass(mlir::createPrintIRPass());
       pm.addNestedPass<func::FuncOp>(mlir::vector::createLowerVectorMaskPass());
 }
 

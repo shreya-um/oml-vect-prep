@@ -58,6 +58,16 @@ using UnrollAndJamMap = std::map<mlir::Operation *, UnrollAndJamList *>;
 void populateKrnlToAffineConversion(mlir::TypeConverter &typeConverter,
     mlir::RewritePatternSet &patterns, mlir::MLIRContext *ctx);
 
+void popmatOp(mlir::TypeConverter &typeConverter,
+        mlir::RewritePatternSet &patterns, mlir::MLIRContext *ctx);
+
+void applyPattern(mlir::MLIRContext *context, mlir::PatternRewriter &rewriter, mlir::arith::AddFOp op, mlir::arith::MulFOp op2);
+
+    void applyTransposeCus(mlir::MLIRContext *context, mlir::PatternRewriter &rewriter, mlir::func::FuncOp funcOp, mlir::arith::ConstantOp constant);
+
+    void applyLoadOp(mlir::MLIRContext *context, mlir::PatternRewriter &rewriter, mlir::affine::AffineLoadOp loadOp);
+
+
 void populateLoweringKrnlCopyFromBufferOpPattern(
     mlir::TypeConverter &typeConverter, mlir::RewritePatternSet &patterns,
     mlir::MLIRContext *ctx);
