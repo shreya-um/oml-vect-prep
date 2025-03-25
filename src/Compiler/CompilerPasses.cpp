@@ -202,7 +202,7 @@ void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
   if (instrumentSignatureString != "NONE")
     pm.addNestedPass<func::FuncOp>(onnx_mlir::createInstrumentONNXSignaturePass(
         instrumentSignatureString));
-  pm.addPass(onnx_mlir::createLowerToKrnlPass(/*enableTiling*/ optLevel >= 3,
+  pm.addPass(onnx_mlir::createLowerToKrnlPass(/*enableTiling*/false,
       /*enableSIMD*/ optLevel >= 3 && !disableSimdOption, enableParallel,
       /*enableFastMath*/ optLevel >= 3 && enableFastMathOption,
       /*opsToCall*/ opsForCall));
@@ -224,6 +224,8 @@ void addKrnlToLLVMPasses(
     // TODO: enable this by default when we make sure it works flawlessly.
     pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToSCFPass());
+  pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToLLVMPass());
+  pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToLLVMPass());
   pm.addPass(mlir::createLowerAffinePass());
 
   // Early introduction of omp causes problems with bufferization, delay for

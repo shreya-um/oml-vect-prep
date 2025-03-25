@@ -34,6 +34,16 @@
 #include <functional>
 #include <mutex>
 
+#include <iostream>
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/Dialect/Affine/Utils.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+
 #define DEBUG_TYPE "krnl_to_affine"
 
 using namespace mlir;
@@ -1040,6 +1050,120 @@ void ConvertKrnlToAffinePass::runOnOperation() {
   }
 
   delete currUnrollAndJamList;
+
+
+mlir::arith::AtomicRMWKind reductionKind;
+ mlir::affine::ReductionLoopMap reductionLoops;
+llvm::DenseSet<mlir::Operation*> loops;
+AffineForOp parentForOp;
+
+  funcOp.walk([&](AffineForOp forOp) {
+     bool isInnermost = true;
+     for (Operation &op : forOp.getBody()->getOperations()) {
+       if (isa<AffineForOp>(&op)) {
+         isInnermost = false;
+         break;
+       }
+     }
+
+      mlir::Value resultVal;
+      if (isInnermost) {
+loops.insert(forOp);
+parentForOp = forOp;
+        auto iterArgs = forOp.getRegionIterArgs();
+        auto yieldedValues = forOp.getBody()->getTerminator()->getOperands();
+
+        if (iterArgs.empty() || yieldedValues.empty()) {
+          std::cout << "no iterArgs or yield results" << std::endl;
+          return;
+        }
+
+        for (auto &use : iterArgs[0].getUses()) {
+			resultVal = use.getOwner()->getResult(0);
+          	if (auto addOp = llvm::dyn_cast<mlir::arith::AddFOp>(use.getOwner())) {
+				std::cout << "Operation is arith::AddFOp" << std::endl;
+				reductionKind = mlir::arith::AtomicRMWKind::addf;
+			} else {
+       			std::cout << "Operation is NOT arith::AddFOp" << std::endl;
+			}
+		}
+
+        if (mlir::OperationEquivalence::exactValueMatch(yieldedValues[0],  resultVal).succeeded()) {
+             std::cout << "Match found: yieldedValues[0] and use.getOwner()->getResult(0) are equivalent!" << std::endl;
+            reductionLoops[forOp].push_back(mlir::affine::LoopReduction{reductionKind, 0, iterArgs[0]});
+		return;
+        } else {
+             std::cout << "No match found." << std::endl;
+        }
+}
+});
+
+if (reductionLoops.size() > 0) {
+
+    mlir::affine::vectorizeAffineLoops(parentForOp, loops, {16}, {0}, reductionLoops = reductionLoops);
+}
+
+//
+//
+//  funcOp.walk([&](AffineForOp forOp) {
+//   // Check if the loop contains another affine.for loop
+//   bool isInnermost = true;
+//   for (Operation &op : forOp.getBody()->getOperations()) {
+//     if (isa<AffineForOp>(&op)) {
+//       isInnermost = false;
+//       break;
+//     }
+//   }
+//
+//    mlir::Value resultVal;
+//   // If this is an innermost loop, vectorize it
+//   if (isInnermost) {
+//
+//     std::cout << "in for Op walk getRegionIterArgs" << std::endl;
+//     auto iterArgs = forOp.getRegionIterArgs();
+//     for (mlir::Value val : iterArgs) {
+//    val.dump();  // Print each yielded value
+//
+//       for (auto &use : iterArgs[0].getUses()) {
+//  resultVal = use.getOwner()->getResult(0);  // Dump the operation that uses the value
+//}
+//}
+//     iterArgs[0].dump();
+
+//     auto iterArgDefOp = iterArgs[0].getDefiningOp();
+//     iterArgDefOp->dump();
+//
+//      auto uses = iterArgs[0].getUses();
+//      uses.dump();
+
+
+
+//     std::cout << "in for Op walk getTerminator get ops" << std::endl;
+//
+//     forOp.getBody()->getTerminator()->dump();
+//
+//
+//     auto yieldedValues = forOp.getBody()->getTerminator()->getOperands();
+////     yieldedValues[0].dump();
+//
+//     std::cout << "Yielded Values:" << std::endl;
+//for (mlir::Value val : yieldedValues) {
+//    val.dump();  // Print each yielded value
+//
+//
+//     if (mlir::OperationEquivalence::exactValueMatch(yieldedValues[0],  resultVal).succeeded()) {
+//            std::cout << "Match found: yieldedValues[0] and use.getOwner()->getResult(0) are equivalent!" << std::endl;
+//        } else {
+//            std::cout << "No match found." << std::endl;
+//        }
+//}
+//     for (Operation &op : forOp.getBody()->getOperations()) {
+//        std::cout << "in for Op walk" << std::endl;
+//        op.dump();
+//      }
+//   }
+//});
+
 }
 
 std::unique_ptr<Pass> createConvertKrnlToAffinePass() {
