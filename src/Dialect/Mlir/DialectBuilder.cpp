@@ -31,6 +31,8 @@
 
 #include <algorithm>
 
+#include <iostream>
+
 #define DEBUG_TYPE "dialect-builder"
 
 using namespace mlir;
@@ -1914,12 +1916,24 @@ Value VectorBuilder::load(VectorType vecType, Value memref, ValueRange indices,
 }
 
 Value VectorBuilder::loadIE(VectorType vecType, Value memref,
-    llvm::ArrayRef<IndexExpr> indices, ValueRange offsets) const {
+    llvm::ArrayRef<IndexExpr> indices, ValueRange offsets, bool invert) const {
   // Cannot use the onnx_mlir::impl::load because we also need to pass the type.
   llvm::SmallVector<Value, 4> indexValues;
   IndexExpr::getValues(indices, indexValues);
-  return load(vecType, memref, indexValues, offsets);
+
+for (const Value &offset : offsets) {
+  offset.dump();  // Dump each offset Value
 }
+if (invert) {
+  std::cout << "indexValues.size() >>>>>>>>>>>>>>>" << indexValues.size() << std::endl;
+  std::cout << "offsets.size() AND interchnaged>>>>>>>>>>>>>>>" << offsets.size() << std::endl;
+  offsets[1].dump();
+  offsets[0].dump();
+  return load(vecType, memref, indexValues, {offsets[0], offsets[1]});
+} else {
+  return load(vecType, memref, indexValues, offsets);
+  }
+    }
 
 void VectorBuilder::store(
     Value val, Value memref, ValueRange indices, ValueRange offsets) const {

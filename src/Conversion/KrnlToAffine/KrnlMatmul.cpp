@@ -22,6 +22,7 @@
 #include "src/Dialect/Krnl/KrnlOps.hpp"
 #include "src/Support/KrnlSupport.hpp"
 #include "llvm/Support/Debug.h"
+#include <iostream>
 
 #include <mutex>
 
@@ -234,6 +235,7 @@ public:
         // clang-format on
       } else {
         // clang-format off
+std::cout << "in simdize 238>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
         create.affineKMem.ifThenElseIE(indexScope, allFullTiles,
           /* then full tiles */ [&](const AffineBuilderKrnlMem &createAffine) {
           genSimdMatMat(createAffine, matmulOp, elementType, aStart, bStart,
@@ -242,6 +244,8 @@ public:
           }, 
           /* Else has some partial tiles */ 
           [&](const AffineBuilderKrnlMem &createAffine) {
+              std::cout << "in simdize 247>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+
           // Trip regardless of full/partial for N & K
           // Test if SIMD dim (M) is full.
           createAffine.ifThenElseIE(indexScope, jFullTiles,
@@ -286,6 +290,9 @@ private:
       Type elementType, ArrayRef<IndexExpr> aStart, ArrayRef<IndexExpr> bStart,
       ArrayRef<IndexExpr> cStart, IndexExpr I, IndexExpr J, IndexExpr K,
       bool unrollJam) const {
+
+      std::cout << "in genscalar >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+
     // Get operands.
     KrnlMatMulOpAdaptor operandAdaptor(op);
     MemRefBuilder createMemRef(createAffine);
@@ -347,6 +354,8 @@ private:
       Type elementType, ArrayRef<IndexExpr> aStart, ArrayRef<IndexExpr> bStart,
       ArrayRef<IndexExpr> cStart, IndexExpr I, IndexExpr J, IndexExpr K,
       IndexExpr vectorLen, bool unrollJam) const {
+
+    std::cout << "in genSimdMatVect >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
     // can simdize only if I & K is compile time
     assert(I.isLiteral() && K.isLiteral() && vectorLen.isLiteral() &&
            "can only simdize with compile time "
@@ -387,7 +396,7 @@ private:
           // Iterates over the I indices (K is SIMD dim).
           // First compute A[i,k]*B[k, 1] for i=0..iUnrollFactor explicitly.
           // We reuse B[k][0] vector for each iteration of i.
-          Value vb = create.vec.loadIE(vecType, B, bStart, {k, iZero});
+          Value vb = create.vec.loadIE(vecType, B, bStart, {iZero, k});
           // Generate computation for each i, manually unrolled for simplicity.
           for (int64_t i = 0; i < iUnrollFactor; ++i) {
             Value iVal = create.math.constantIndex(i);
@@ -432,6 +441,7 @@ private:
       Type elementType, ArrayRef<IndexExpr> aStart, ArrayRef<IndexExpr> bStart,
       ArrayRef<IndexExpr> cStart, IndexExpr I, IndexExpr J, IndexExpr K,
       IndexExpr vectorLen, bool unrollJam) const {
+      std::cout << "in genSimdMatMat >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
     // can simdize only if K is compile time
     assert(J.isLiteral() &&
            "can only simdize with compile time blocking factor on simd axis");
@@ -462,10 +472,11 @@ private:
           Value i = loopInd[0];
           iSaved = i; // Saved for unroll and jam.
           // Alloc temp vector TmpC and save C(i)/0.0 into it.
-          Value initVal = create.vec.loadIE(vecType, C, cStart, {i, iZero});
+          Value initVal = create.vec.loadIE(vecType, C, cStart, {iZero, i});
           Value tmpCAccess = (unrollFactor > 1) ? i : zeroIE.getValue();
           createAffine.store(initVal, TmpC, tmpCAccess);
           // Sum over k.
+          std::cout << "in line 476 >>>>>>>>>> just before vec.loadIE B" << std::endl;
           createAffine.forLoopIE(zeroIE, K, 1,
               [&](const AffineBuilderKrnlMem &createAffine,
                   ValueRange loopInd) {
@@ -475,7 +486,13 @@ private:
                 kSaved = k;
                 Value a = createAffine.loadIE(A, aStart, {i, k});
                 Value va = create.vec.broadcast(vecType, a);
-                Value vb = create.vec.loadIE(vecType, B, bStart, {k, iZero});
+                Value vb;
+
+                if (k) {
+                 vb = create.vec.loadIE(vecType, B, bStart, { iZero, k}, true);
+                } else {
+                    vb = create.vec.loadIE(vecType, B, bStart, {k, iZero});
+                    }
                 // TTmpC() = vector_fma(va, vb, TTmpC());
                 Value tmpVal = createAffine.load(TmpC, tmpCAccess);
                 Value res;
@@ -500,13 +517,13 @@ private:
                 create.vec.loadIE(vecType, C, cStart, {i, iZero});
             tmpResults = create.vec.shuffle(tmpResults, originalCvec, mask);
           }
-          create.vec.storeIE(tmpResults, C, cStart, {i, iZero});
+          create.vec.storeIE(tmpResults, C, cStart, {iZero, i});
         });
 
     if (unrollJam && (I.isLiteral() || K.isLiteral())) {
       auto list = getUnrollAndJamList(op);
       if (K.isLiteral()) {
-        int64_t kUnroll = K.getLiteral();
+        int64_t kUnroll = -1;
         // We know there is no unrolling along I, make a bigger cutoff.
         int64_t cutoff = (!I.isLiteral() || I.getLiteral() < 2) ? 8 : 4;
         if (kUnroll >= cutoff) {
