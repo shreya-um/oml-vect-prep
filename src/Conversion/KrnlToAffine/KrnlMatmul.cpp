@@ -472,7 +472,7 @@ private:
           Value i = loopInd[0];
           iSaved = i; // Saved for unroll and jam.
           // Alloc temp vector TmpC and save C(i)/0.0 into it.
-          Value initVal = create.vec.loadIE(vecType, C, cStart, {iZero, i});
+          Value initVal = create.vec.loadIE(vecType, C, cStart, {i, iZero});
           Value tmpCAccess = (unrollFactor > 1) ? i : zeroIE.getValue();
           createAffine.store(initVal, TmpC, tmpCAccess);
           // Sum over k.
@@ -517,13 +517,13 @@ private:
                 create.vec.loadIE(vecType, C, cStart, {i, iZero});
             tmpResults = create.vec.shuffle(tmpResults, originalCvec, mask);
           }
-          create.vec.storeIE(tmpResults, C, cStart, {iZero, i});
+          create.vec.storeIE(tmpResults, C, cStart, { i, iZero});
         });
 
     if (unrollJam && (I.isLiteral() || K.isLiteral())) {
       auto list = getUnrollAndJamList(op);
       if (K.isLiteral()) {
-        int64_t kUnroll = -1;
+        int64_t kUnroll = K.getLiteral();
         // We know there is no unrolling along I, make a bigger cutoff.
         int64_t cutoff = (!I.isLiteral() || I.getLiteral() < 2) ? 8 : 4;
         if (kUnroll >= cutoff) {
