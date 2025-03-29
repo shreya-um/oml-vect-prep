@@ -1381,9 +1381,35 @@ addOp.getOperand(1).dump();
      std::cout << "test here line 1203" << std::endl;
    funcOp.dump();
    }
+
+
+
 //      break;
   });
 
+
+       funcOp.walk([&](AffineForOp forOp) {
+    std::cout << "forOp iter args test" << std::endl;
+//    forOp.getRegionIterArgs()[0].dump();
+   // Check if the loop contains another affine.for loop
+   bool isInnermost = true;
+   std::cout << "set to true" << std::endl;
+   for (Operation &op : forOp.getBody()->getOperations()) {
+     if (isa<AffineForOp>(&op)) {
+       isInnermost = false;
+          std::cout << "breaking" << std::endl;
+       break;
+     }
+     }
+     if (isInnermost) {
+          if (AffineForOp parentForOp = forOp->getParentOfType<AffineForOp>()) {
+        std::cout << "Parent ForOp found!" << std::endl;
+        parentForOp.dump();
+        mlir::affine::loopUnrollJamUpToFactor(parentForOp, 32);
+        return;
+    }
+       }
+});
 
 //  auto countLoops = 0;
 //  auto countLoopsAll = 0;
