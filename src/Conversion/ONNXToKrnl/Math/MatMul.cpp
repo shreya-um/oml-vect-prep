@@ -113,10 +113,34 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
                     }
                   }
                   if (!shapeHelper.bPadDims[i]) {
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+                    std::cout <<  outerLoopNum << std::endl;
+
+                    for (auto val : outerIndices) {
+                      val.dump();
+                    }
+
                     // For B, reduction index is second to last.
-                    if (i == bRank - 2) {
+                    if (i == bRank - 1) {
                       bAccessFct.emplace_back(k);
-                    } else if (i == outerLoopNum) {
+                    } else if (i == bRank - 2) {
                       // When the rank of A 1D, then the output lost one
                       // dimension. E,g, (5) x (10, 5, 4) -> padded (1, 5) x
                       // (10, 5, 4) = (10, 1, 4). But we drop the "1" so its
@@ -124,10 +148,17 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
                       // reduction (i=2 here), we would normally access
                       // output[2] but it does not exist, because we lost a dim
                       // in the output due to 1D A.
-                      bAccessFct.emplace_back(outerIndices[i - 1]);
+                      bAccessFct.emplace_back(outerIndices[i + 1]);
                     } else {
                       bAccessFct.emplace_back(outerIndices[i]);
                     }
+//                    if (i == bRank - 2) {
+//bAccessFct.emplace_back(outerIndices[bRank - 1]); // Swap with last index
+//} else if (i == outerLoopNum) {
+//bAccessFct.emplace_back(k); // Swap with second-last index
+//} else {
+//bAccessFct.emplace_back(outerIndices[i]);
+//}
                   }
                 }
                 // Add mat mul operation.

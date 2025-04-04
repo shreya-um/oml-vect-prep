@@ -136,21 +136,21 @@ LogicalResult ONNXGenericMatMulOpShapeHelper<OP_TYPE>::computeShape() {
   int bK = paddedRank - 2;
   int bM = paddedRank - 1;
   // And test the K dimensions.
-  if (aDims[aK].isLiteral() && bDims[bK].isLiteral()) {
-    if (aDims[aK].getLiteral() != bDims[bK].getLiteral())
+  if (aDims[aK].isLiteral() && bDims[bM].isLiteral()) {
+    if (aDims[aK].getLiteral() != bDims[bM].getLiteral())
       return this->op->emitError("reduction dimension must be the same");
   } else if (aDims[aK].isLiteral()) {
     // Save aK dims into bK dims, in case bK dims was runtime
-    bDims[bK] = aDims[aK];
-  } else if (bDims[bK].isLiteral()) {
+    bDims[bM] = aDims[aK];
+  } else if (bDims[bM].isLiteral()) {
     // Save bK dims into aK dims, in case aK dims was runtime
-    aDims[aK] = bDims[bK];
+    aDims[aK] = bDims[bM];
   }
   // Add lower N x M dimensions if they are not padded dimensions.
   if (!aPadDims[aN])
     outputDims.emplace_back(aDims[aN]);
-  if (!bPadDims[bM])
-    outputDims.emplace_back(bDims[bM]);
+  if (!bPadDims[bK])
+    outputDims.emplace_back(bDims[bK]);
   // For the case where both aRank == bRank == 1
   if (aRank == 1 && bRank == 1) {
     assert(outputDims.empty() && "1-D x 1-D results in scalar");

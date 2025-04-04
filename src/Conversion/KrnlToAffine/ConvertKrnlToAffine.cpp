@@ -163,20 +163,20 @@ std::mutex unrollAndJamMutex;
   using OpRewritePattern<math::FmaOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(arith::AddFOp addop, arith::MulFOp mulop, PatternRewriter &rewriter) {
-    std::cout << "op dump >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    // std::cout << "op dump >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
     // Create a new `math::MulFOp` with the same operands
     match(addop);
     auto newMulOp = rewriter.create<math::FmaOp>(mulop.getLoc(), mulop.getLhs(), mulop.getRhs(), addop.getLhs());
 newMulOp.dump();
     // Replace the old op with the new one
     rewriter.replaceOp(addop, newMulOp);
-std::cout << "rewrited >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+// std::cout << "rewrited >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
 rewriter.eraseOp(mulop);
     return success();
   }
 
       LogicalResult match(arith::AddFOp op) {
-        std::cout << "in match" << std::endl;
+        // std::cout << "in match" << std::endl;
      return success();
   }
 };
@@ -185,7 +185,7 @@ struct UpLoadOpPattern : public OpRewritePattern<affine::AffineLoadOp> {
   using OpRewritePattern<affine::AffineLoadOp>::OpRewritePattern;
 
   LogicalResult matchAndRewrite(affine::AffineLoadOp loadOp, PatternRewriter &rewriter) {
-    std::cout << "op dump UpLoadOpPattern >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+    // std::cout << "op dump UpLoadOpPattern >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
     // Create a new `math::MulFOp` with the same operands
     // match(addop);
 
@@ -205,21 +205,21 @@ for (const auto &val : indices) {
 }
 
 // Reorder indices in a new SmallVector
-mlir::SmallVector<mlir::Value> reorderedIndices = {indices[1], indices[0]};
-
-// Convert reordered SmallVector to ValueRange
-mlir::ValueRange reorderedValueRange(reorderedIndices);
+      if (indices.size() >= 2) {
+        std::swap(indices[indices.size() - 1], indices[indices.size() - 2]);
+      }
+      mlir::ValueRange reorderedValueRange(indices);
         auto newLoadOp = rewriter.create<affine::AffineLoadOp>(loadOp.getLoc(), loadOp.getMemRef(), reorderedValueRange);
         newLoadOp.dump();
     // Replace the old op with the new one
     rewriter.replaceOp(loadOp, newLoadOp);
-std::cout << "rewrited newloadOp UpLoadOpPattern >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+// std::cout << "rewrited newloadOp UpLoadOpPattern >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
 // rewriter.eraseOp(loadOp);
     return success();
   }
 
       LogicalResult match(affine::AffineLoadOp loadOp) {
-        std::cout << "in match" << std::endl;
+        // std::cout << "in match" << std::endl;
      return success();
   }
 };
@@ -233,7 +233,7 @@ std::cout << "rewrited newloadOp UpLoadOpPattern >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
     using OpRewritePattern<memref::TransposeOp>::OpRewritePattern;
 
     LogicalResult matchAndRewrite(mlir::func::FuncOp funcOp, mlir::arith::ConstantOp constant, PatternRewriter &rewriter) {
-      std::cout << "op dump >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+      // std::cout << "op dump >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
       // Create a new `math::MulFOp` with the same operands
       mlir::Block &entryBlock = funcOp.getBody().front();
       if (!entryBlock.args_empty()) {
@@ -255,7 +255,7 @@ std::cout << "rewrited newloadOp UpLoadOpPattern >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
         newTransOp.getResult().dump();
       // Replace the old op with the new one
       rewriter.moveOpAfter(newTransOp, constant);
-      std::cout << "rewrited >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
+      // std::cout << "rewrited >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
 
       //  auto newLoadOp = rewriter.create<affine::AffineLoadOp>(loadOp.getLoc(), newTransOp.getResult(), loadOp.getIndices());
       //  newLoadOp.dump();
@@ -977,7 +977,7 @@ struct ConvertKrnlToAffinePass
   StringRef getArgument() const override { return "convert-krnl-to-affine"; }
 
   StringRef getDescription() const override { return "Lower Krnl dialect."; }
-//  std::cout<< "option printing >>>>>>>>>>>>>>>" <<options <<std::endl;
+//  // std::cout<< "option printing >>>>>>>>>>>>>>>" <<options <<std::endl;
 
   void runOnOperation() final;
 };
@@ -1198,7 +1198,6 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 
 //            funcOp.dump();
 //
-
 //
 //    transOp = dyn_cast<memref::TransposeOp>(&op);
 //    std::cout << "test 1227" << std::endl;
@@ -1245,10 +1244,6 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 //        }
 //    }
 //
-//    if (isInnermost) {
-//        llvm::DenseSet<mlir::Operation*> loops_2;
-//        loops_2.insert(forOp);
-//        auto tripcount = mlir::affine::getConstantTripCount(forOp);
 //
 //        if (tripcount.has_value()) {
 //            // Add any necessary code here
@@ -1306,10 +1301,10 @@ if (isa<AffineForOp>(&op)) {
 });
 // funcOp.dump();
 
-PatternRewriter rewriter3(ctx);
-rewriter3.setInsertionPointAfter(loadOp);
-applyLoadOp(ctx, rewriter3, loadOp);
-//
+//PatternRewriter rewriter3(ctx);
+//rewriter3.setInsertionPointAfter(loadOp);
+//applyLoadOp(ctx, rewriter3, loadOp);
+////
 //  PatternRewriter rewriter(ctx);
 //  rewriter.setInsertionPointAfter(loadOp);
 //  applyTransposeCus(ctx, rewriter, loadOp, constantOpLoc);
@@ -1317,7 +1312,6 @@ applyLoadOp(ctx, rewriter3, loadOp);
 // funcOp.dump();
 
 
-  mlir::affine::ReductionLoopMap reductionLoops;
 
 //  std::cout << "Options value: " << options << std::endl;
   std::cout << "after loop reduction reduction size >>>>>>>>>" << veln_v << std::endl;
@@ -1340,6 +1334,8 @@ applyLoadOp(ctx, rewriter3, loadOp);
    // If this is an innermost loop, vectorize it
    if (isInnermost) {
      std::cout << "in inner most ...." << std::endl;
+       mlir::affine::ReductionLoopMap reductionLoops;
+
      llvm::DenseSet<mlir::Operation*> loops_2;
      loops_2.insert(forOp);
      std::cout << "loops_2" << std::endl;
@@ -1362,7 +1358,7 @@ addOp.getOperand(1).dump();
 
 
                   reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, lhs});
-                reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, rhs});
+//                reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, rhs});
                 std::cout << "after loop reduction reduction size >>>>>>>>>" << reductionLoops.size() << std::endl;
             std::cout << "after loop reduction for loop args size >>>>>>>>>" << forOp.getNumIterOperands() << std::endl;
 
@@ -1374,12 +1370,14 @@ addOp.getOperand(1).dump();
 //   auto tripcount = mlir::affine::getConstantTripCount(forOp);
 
 //     if (tripcount.has_value() && tripcount.value() == 7) {}
+      if (reductionLoops.size() > 0) {
 
    mlir::affine::vectorizeAffineLoops(forOp, loops_2, {veln_v}, {0}, reductionLoops = reductionLoops);
    std::cout << "test here line 1203" << std::endl;
      std::cout << "test here line 1203" << std::endl;
      std::cout << "test here line 1203" << std::endl;
    funcOp.dump();
+   }
    }
 
 
@@ -1405,7 +1403,7 @@ addOp.getOperand(1).dump();
           if (AffineForOp parentForOp = forOp->getParentOfType<AffineForOp>()) {
         std::cout << "Parent ForOp found!" << std::endl;
         parentForOp.dump();
-        mlir::affine::loopUnrollJamUpToFactor(parentForOp, 32);
+//        mlir::affine::loopUnrollJamUpToFactor(parentForOp, 32);
         return;
     }
        }
