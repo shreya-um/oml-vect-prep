@@ -65,6 +65,8 @@ Value KrnlBuilder::load(
 
 Value KrnlBuilder::loadIE(
     Value memref, ArrayRef<IndexExpr> indices, ValueRange offsets) const {
+
+std::cout << "loadIE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>" << std::endl;
   return onnx_mlir::impl::loadIE<KrnlBuilder, KrnlLoadOp>(
       *this, memref, indices, offsets);
 }

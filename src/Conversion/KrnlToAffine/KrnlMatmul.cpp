@@ -24,6 +24,7 @@
 #include "llvm/Support/Debug.h"
 
 #include <mutex>
+#include <iostream>
 
 #define DEBUG_TYPE "krnl_to_affine"
 
@@ -347,6 +348,8 @@ private:
       Type elementType, ArrayRef<IndexExpr> aStart, ArrayRef<IndexExpr> bStart,
       ArrayRef<IndexExpr> cStart, IndexExpr I, IndexExpr J, IndexExpr K,
       IndexExpr vectorLen, bool unrollJam) const {
+
+    std::cout << "genSimdMatVect" << std::endl;
     // can simdize only if I & K is compile time
     assert(I.isLiteral() && K.isLiteral() && vectorLen.isLiteral() &&
            "can only simdize with compile time "
@@ -432,6 +435,9 @@ private:
       Type elementType, ArrayRef<IndexExpr> aStart, ArrayRef<IndexExpr> bStart,
       ArrayRef<IndexExpr> cStart, IndexExpr I, IndexExpr J, IndexExpr K,
       IndexExpr vectorLen, bool unrollJam) const {
+
+        std::cout << "genSimdMatMat" << std::endl;
+
     // can simdize only if K is compile time
     assert(J.isLiteral() &&
            "can only simdize with compile time blocking factor on simd axis");

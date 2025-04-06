@@ -23,6 +23,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
+#include <iostream>
 
 // Please do not add dependences on ONNX or KRNL dialects.
 #include "src/Compiler/CompilerOptions.hpp"
@@ -1915,6 +1916,7 @@ Value VectorBuilder::load(VectorType vecType, Value memref, ValueRange indices,
 
 Value VectorBuilder::loadIE(VectorType vecType, Value memref,
     llvm::ArrayRef<IndexExpr> indices, ValueRange offsets) const {
+  std::cout << "VectorBuilder::loadIE: " << "\n";
   // Cannot use the onnx_mlir::impl::load because we also need to pass the type.
   llvm::SmallVector<Value, 4> indexValues;
   IndexExpr::getValues(indices, indexValues);

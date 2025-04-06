@@ -27,6 +27,8 @@ static constexpr int32_t DISABLE_MAT_VEC_PRODUCT = 0;
 using namespace mlir;
 
 namespace onnx_mlir {
+  static int count = 0;
+
 
 struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
   ONNXMatMulOpLowering(TypeConverter &typeConverter, MLIRContext *ctx,
@@ -49,7 +51,7 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
   void replaceGenericMatmul(Operation *op, ONNXMatMulOpAdaptor &operandAdaptor,
       Type elementType, ONNXMatMulOpShapeHelper &shapeHelper, Value alloc,
       Value fZero, ConversionPatternRewriter &rewriter, Location loc,
-      bool enableParallel) const {
+      bool enableParallel, bool isSq) const {
 
     onnxToKrnlSimdReport(op, /*successful*/ false, /*vl*/ 0, /*trip count*/ 0,
         "no simd for generic algo");
@@ -113,6 +115,15 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
                     }
                   }
                   if (!shapeHelper.bPadDims[i]) {
+                    if (isSq) {
+                      if (i == bRank - 1) {
+  bAccessFct.emplace_back(k);
+                      } else if (i == bRank - 2) {
+  bAccessFct.emplace_back(outerIndices[i + 1]);
+} else {
+  bAccessFct.emplace_back(outerIndices[i]);
+}
+                    } else {
                     // For B, reduction index is second to last.
                     if (i == bRank - 2) {
                       bAccessFct.emplace_back(k);
@@ -128,6 +139,21 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
                     } else {
                       bAccessFct.emplace_back(outerIndices[i]);
                     }
+                    }
+//                    if (i == bRank - 1) {
+//  bAccessFct.emplace_back(k);
+//} else if (i == bRank - 2) {
+//  // When the rank of A 1D, then the output lost one
+//  // dimension. E,g, (5) x (10, 5, 4) -> padded (1, 5) x
+//  // (10, 5, 4) = (10, 1, 4). But we drop the "1" so its
+//  // really (10, 4). When processing the last dim of the
+//  // reduction (i=2 here), we would normally access
+//  // output[2] but it does not exist, because we lost a dim
+//  // in the output due to 1D A.
+//  bAccessFct.emplace_back(outerIndices[i + 1]);
+//} else {
+//  bAccessFct.emplace_back(outerIndices[i]);
+//}
                   }
                 }
                 // Add mat mul operation.
@@ -501,21 +527,60 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
 
     Value A(adaptor.getA()), B(adaptor.getB());
     int aRank = mlir::cast<MemRefType>(A.getType()).getShape().size();
+    auto memrefType = mlir::cast<mlir::MemRefType>(A.getType());
+    auto shape = memrefType.getShape();
+//    bool isSq = false;
+
+    llvm::outs() << shape[0] << ", " << shape[1] << "\n";
+
+    bool change = false;
+
+    if (auto memrefType = B.getType().dyn_cast<mlir::MemRefType>()) {
+      // Check if B is a result of a "krnl.global" or similar constant operation
+      if (auto op = B.getDefiningOp()) {
+        // Check if this is a "krnl.global" operation
+        if (op->getName().getStringRef() == "krnl.global") {
+          // Check if the operation has a 'value' attribute (dense)
+          if (op->hasAttr("value")) {
+             std::cout << "B is a global constant\n";
+             change = true;
+          }
+        }
+      }
+    }
+
+    int numberOfRect = 0;
     int bRank = mlir::cast<MemRefType>(B.getType()).getShape().size();
+    auto memrefType1 = mlir::cast<mlir::MemRefType>(B.getType());
+    auto shape2 = memrefType1.getShape();
+    bool isSq = false;
+
+    if (bRank >= 2) {
+    llvm::outs() << shape2[bRank-1] << ", " << shape2[bRank -2] << "\n";
+    if ( shape2[bRank - 1] == shape2[bRank - 2] ) {
+      isSq = true;
+    }
+    if (shape2[bRank - 1] == shape[aRank - 1]) {
+      isSq = true;
+    }
+    }
+
+//    bool exc = chnage && isSq;
     int cRank = mlir::cast<MemRefType>(alloc.getType()).getShape().size();
-    if (enableTiling && aRank == 2 && bRank == 2) {
+    if ((enableTiling && !isSq) && aRank == 2 && bRank == 2) {
       // Optimized Matmul only when 2D and allowed to tile and unroll.
       assert(cRank == 2 && "expected IxK * KxJ = IxJ 2D result");
       replace2x2Matmul2d(op, adaptor, elementType, shapeHelper, alloc, zero,
           rewriter, loc, enableParallel);
-    } else if (enableTiling && aRank == 2 && bRank > 2) {
+    } else if ((enableTiling && !isSq) && aRank == 2 && bRank > 2) {
       // Broadcasting B.
       assert(cRank == bRank && "expected IxK * *xKxJ = *xIxJ result");
       replace2x2Matmul2dBroadcasting(op, adaptor, elementType, shapeHelper,
           /*broadcasting B*/ true,
           /*same static broadcast*/ false, alloc, zero, rewriter, loc,
           enableParallel);
-    } else if (enableTiling && aRank > 2 && bRank == 2) {
+    } else if ((enableTiling && !isSq) && aRank > 2 && bRank == 2) {
+      std::cout << "Broadcasting A  aRank >>>>>>>>>>>>>>>>>>>>>>>>>>\n";
       // Broadcasting A.
       assert(cRank == aRank && "expected IxK * *xKxJ = *xIxJ result");
       replace2x2Matmul2dBroadcasting(op, adaptor, elementType, shapeHelper,
@@ -524,7 +589,7 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
           enableParallel);
     } else {
       // Test if have A and B have identical batch size.
-      bool sameBatchSize = (enableTiling && aRank > 2 && aRank == bRank);
+      bool sameBatchSize = ((enableTiling && !isSq) && aRank > 2 && aRank == bRank);
       if (sameBatchSize) {
         for (int i = 0; i < aRank - 2; ++i)
           // Note that using A and B from the operation instead of adaptor.
@@ -537,6 +602,7 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
       // While there is technically no broadcasting there, we can use nearly the
       // same logic as in replace2x2Matmul2dBroadcasting. So reuse that code.
       if (sameBatchSize) {
+        std::cout << "Same batch size for matmul >>>>>>>>>>>>>>>>>>>>>>>>>>\n";
         assert(cRank == aRank && "expected IxK * *xKxJ = *xIxJ result");
         replace2x2Matmul2dBroadcasting(op, adaptor, elementType, shapeHelper,
             /*broadcasting B*/ true,
@@ -544,7 +610,7 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
             enableParallel);
       } else {
         replaceGenericMatmul(op, adaptor, elementType, shapeHelper, alloc, zero,
-            rewriter, loc, enableParallel);
+            rewriter, loc, enableParallel, isSq);
       }
     }
     // Done.

@@ -135,31 +135,70 @@ LogicalResult ONNXGenericMatMulOpShapeHelper<OP_TYPE>::computeShape() {
   int aK = paddedRank - 1;
   int bK = paddedRank - 2;
   int bM = paddedRank - 1;
-  // And test the K dimensions.
-  if (aDims[aK].isLiteral() && bDims[bK].isLiteral()) {
-    if (aDims[aK].getLiteral() != bDims[bK].getLiteral())
-      return this->op->emitError("reduction dimension must be the same");
-  } else if (aDims[aK].isLiteral()) {
-    // Save aK dims into bK dims, in case bK dims was runtime
-    bDims[bK] = aDims[aK];
-  } else if (bDims[bK].isLiteral()) {
-    // Save bK dims into aK dims, in case aK dims was runtime
-    aDims[aK] = bDims[bK];
-  }
-  // Add lower N x M dimensions if they are not padded dimensions.
-  if (!aPadDims[aN])
-    outputDims.emplace_back(aDims[aN]);
-  if (!bPadDims[bM])
-    outputDims.emplace_back(bDims[bM]);
-  // For the case where both aRank == bRank == 1
-  if (aRank == 1 && bRank == 1) {
-    assert(outputDims.empty() && "1-D x 1-D results in scalar");
-  }
-  // Save the final result.
-  this->setOutputDims(outputDims);
-  return success();
-}
 
+  bool match = true;
+
+  // Initial literal comparison
+  if (aDims[aK].isLiteral() && bDims[bM].isLiteral()) {
+    if (aDims[aK].getLiteral() != bDims[bM].getLiteral())
+      match = false;
+  }
+
+  if (match) {
+    // Check reduction dimension compatibility
+    if (aDims[aK].isLiteral() && bDims[bM].isLiteral()) {
+      if (aDims[aK].getLiteral() != bDims[bM].getLiteral())
+        return this->op->emitError("reduction dimension must be the same");
+    } else if (aDims[aK].isLiteral()) {
+      bDims[bM] = aDims[aK]; // Propagate literal
+    } else if (bDims[bM].isLiteral()) {
+      aDims[aK] = bDims[bM]; // Propagate literal
+    }
+
+    // Append non-padded dimensions
+    if (!aPadDims[aN])
+      outputDims.emplace_back(aDims[aN]);
+    if (!bPadDims[bK])
+      outputDims.emplace_back(bDims[bK]);
+
+    // Special case: vector dot product
+    if (aRank == 1 && bRank == 1) {
+      assert(outputDims.empty() && "1-D x 1-D results in scalar");
+    }
+
+    // Save result
+    this->setOutputDims(outputDims);
+    return success();
+
+  }
+  else {
+    // Fallback for non-matching dims
+    if (aDims[aK].isLiteral() && bDims[bK].isLiteral()) {
+      if (aDims[aK].getLiteral() != bDims[bK].getLiteral())
+        return this->op->emitError("reduction dimension must be the same");
+    } else if (aDims[aK].isLiteral()) {
+      bDims[bK] = aDims[aK];
+    } else if (bDims[bK].isLiteral()) {
+      aDims[aK] = bDims[bK];
+    }
+
+    // Append non-padded dimensions
+    if (!aPadDims[aN])
+      outputDims.emplace_back(aDims[aN]);
+    if (!bPadDims[bM])
+      outputDims.emplace_back(bDims[bM]);
+
+    // Special case: vector dot product
+    if (aRank == 1 && bRank == 1) {
+      assert(outputDims.empty() && "1-D x 1-D results in scalar");
+    }
+
+    // Save result
+    this->setOutputDims(outputDims);
+    return success();
+  }
+
+  }
 } // namespace onnx_mlir
 
 //===----------------------------------------------------------------------===//
