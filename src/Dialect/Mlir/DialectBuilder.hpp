@@ -562,7 +562,7 @@ struct VectorBuilder final : DialectBuilder {
       mlir::ValueRange indices = {}, mlir::ValueRange offsets = {}) const;
   mlir::Value loadIE(mlir::VectorType vecType, mlir::Value memref,
       mlir::ArrayRef<IndexExpr> indices = {},
-      mlir::ValueRange offsets = {}) const;
+      mlir::ValueRange offsets = {}, bool exchange = false) const;
   // Vector store: memref can be a scalar, will store the vector values.
   // Add offsets (if any) to the least significant memref dims.
   void store(mlir::Value val, mlir::Value memref, mlir::ValueRange indices = {},

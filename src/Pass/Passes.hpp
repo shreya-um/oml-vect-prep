@@ -107,7 +107,7 @@ std::unique_ptr<mlir::Pass> createElideConstGlobalValuePass();
 
 namespace krnl {
 /// Pass for lowering frontend dialects to Krnl IR dialect.
-std::unique_ptr<mlir::Pass> createConvertKrnlToAffinePass();
+std::unique_ptr<mlir::Pass> createConvertKrnlToAffinePass(int options);
 
 /// Pass for lowering Seq in Krnl dialect.
 std::unique_ptr<mlir::Pass> createConvertSeqToMemrefPass();

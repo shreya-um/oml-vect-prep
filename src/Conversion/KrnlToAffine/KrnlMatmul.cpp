@@ -24,6 +24,7 @@
 #include "llvm/Support/Debug.h"
 
 #include <mutex>
+#include <iostream>
 
 #define DEBUG_TYPE "krnl_to_affine"
 
@@ -437,10 +438,36 @@ private:
            "can only simdize with compile time blocking factor on simd axis");
     MultiDialectBuilder<MathBuilder, MemRefBuilder> create(createAffine);
 
+    bool sqmat = false;
     // Get operands.
     KrnlMatMulOpAdaptor operandAdaptor = KrnlMatMulOpAdaptor(op);
     Value A(operandAdaptor.getA()), B(operandAdaptor.getB()),
         C(operandAdaptor.getC());
+
+    auto aType = A.getType().cast<mlir::ShapedType>();
+auto bType = B.getType().cast<mlir::ShapedType>();
+
+llvm::ArrayRef<int64_t> aShape = aType.getShape();
+llvm::ArrayRef<int64_t> bShape = bType.getShape();
+
+ int64_t bLast = bShape[bShape.size() - 1];
+  int64_t bSecondLast = bShape[bShape.size() - 2];
+  if (bLast == bSecondLast) {
+    sqmat = true;
+    // We have a square matrix.
+    std::cout << "Square matrix: " << bLast << " x " << bSecondLast << "\n";
+  }
+
+llvm::outs() << "Shape of A: ";
+for (auto dim : aShape)
+  llvm::outs() << dim << " ";
+llvm::outs() << "\n";
+
+llvm::outs() << "Shape of B: ";
+for (auto dim : bShape)
+  llvm::outs() << dim << " ";
+llvm::outs() << "\n";
+
 
     // Generate the vector type conversions.
     int64_t VL = vectorLen.getLiteral();
@@ -475,7 +502,7 @@ private:
                 kSaved = k;
                 Value a = createAffine.loadIE(A, aStart, {i, k});
                 Value va = create.vec.broadcast(vecType, a);
-                Value vb = create.vec.loadIE(vecType, B, bStart, {k, iZero});
+                Value vb = create.vec.loadIE(vecType, B, bStart, {k, iZero}, sqmat);
                 // TTmpC() = vector_fma(va, vb, TTmpC());
                 Value tmpVal = createAffine.load(TmpC, tmpCAccess);
                 Value res;

@@ -38,10 +38,16 @@
 #include "src/Dialect/Mlir/VectorMachineSupport.hpp"
 #include "src/Dialect/ONNX/ONNXDialect.hpp"
 #include "src/Pass/Passes.hpp"
+#include "llvm/Support/CommandLine.h"
 
 using namespace mlir;
 
 namespace onnx_mlir {
+
+  llvm::cl::opt<int> vlen(
+        "vlen",
+        llvm::cl::desc("affine vector lenght"),
+        llvm::cl::init(4));
 
 void configurePasses() {
   // Handle deprecated mcpu.
@@ -213,8 +219,10 @@ void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
 }
 
 void addKrnlToAffinePasses(mlir::PassManager &pm) {
+  int vlen_v = vlen.getValue();
+
   pm.addNestedPass<func::FuncOp>(
-      onnx_mlir::krnl::createConvertKrnlToAffinePass());
+      onnx_mlir::krnl::createConvertKrnlToAffinePass(), vlen_v);
 }
 
 void addKrnlToLLVMPasses(

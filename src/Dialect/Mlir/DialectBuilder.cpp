@@ -1914,11 +1914,31 @@ Value VectorBuilder::load(VectorType vecType, Value memref, ValueRange indices,
 }
 
 Value VectorBuilder::loadIE(VectorType vecType, Value memref,
-    llvm::ArrayRef<IndexExpr> indices, ValueRange offsets) const {
+    llvm::ArrayRef<IndexExpr> indices, ValueRange offsets, bool exchange) const {
   // Cannot use the onnx_mlir::impl::load because we also need to pass the type.
   llvm::SmallVector<Value, 4> indexValues;
   IndexExpr::getValues(indices, indexValues);
-  return load(vecType, memref, indexValues, offsets);
+
+  for (auto offset : offsets) {
+    offset.dump(); // Dumps to llvm::errs()
+  }
+
+//  llvm::SmallVector<Value, 4> indexValues;
+  IndexExpr::getValues(indices, indexValues);
+
+  llvm::errs() << "Index Values:\n";
+  for (auto idxVal : indexValues) {
+    idxVal.dump(); // Dumps to llvm::errs()
+  }
+
+  llvm::SmallVector<Value, 4> mutableOffsets(offsets.begin(), offsets.end());
+
+  if (indexValues.size() >= 2 && mutableOffsets.size() >= 2 && exchange) {
+    std::swap(indexValues[indexValues.size() - 2], indexValues[indexValues.size() - 1]);
+    std::swap(mutableOffsets[mutableOffsets.size() - 2], mutableOffsets[mutableOffsets.size() - 1]);
+  }
+
+  return load(vecType, memref, indexValues, mutableOffsets);
 }
 
 void VectorBuilder::store(

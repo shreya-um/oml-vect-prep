@@ -844,6 +844,10 @@ struct ConvertKrnlToAffinePass
     : public PassWrapper<ConvertKrnlToAffinePass, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertKrnlToAffinePass);
 
+  int vlen_v;
+  ConvertKrnlToAffinePass(int vlen_v) : veln_v(vlen_v) {}
+
+
   StringRef getArgument() const override { return "convert-krnl-to-affine"; }
 
   StringRef getDescription() const override { return "Lower Krnl dialect."; }
