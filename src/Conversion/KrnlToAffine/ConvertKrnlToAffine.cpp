@@ -15,6 +15,7 @@
 #include "mlir/Analysis/DataLayoutAnalysis.h"
 #include "mlir/Dialect/Affine/Analysis/AffineAnalysis.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Affine/LoopUtils.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
@@ -33,6 +34,45 @@
 
 #include <functional>
 #include <mutex>
+
+
+#include <iostream>
+
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/Dialect/Affine/Utils.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/Builders.h"
+#include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallVector.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
+#include "mlir/Support/LLVM.h"
+#include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
+#include "mlir/Dialect/Vector/TransformOps/VectorTransformOps.h"
+ #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+#include "mlir/IR/OpDefinition.h"
+#include <iostream>
+
+ #include "mlir/IR/PatternMatch.h"
+ #include "mlir/IR/MLIRContext.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/Builders.h"
+ #include "mlir/Dialect/Affine/Utils.h"
+ #include "mlir/IR/Operation.h"
+ #include "mlir/IR/Builders.h"
+ #include "llvm/ADT/DenseSet.h"
+ #include "llvm/ADT/ArrayRef.h"
+ #include "llvm/ADT/SmallVector.h"
+ #include "mlir/Dialect/Affine/IR/AffineOps.h"
+ #include "mlir/Support/LLVM.h"
+ #include "mlir/Dialect/Vector/Transforms/LoweringPatterns.h"
+ #include "mlir/Dialect/Vector/TransformOps/VectorTransformOps.h"
+  #include "mlir/Dialect/Affine/Analysis/LoopAnalysis.h"
+ #include "mlir/IR/OpDefinition.h"
+
 
 #define DEBUG_TYPE "krnl_to_affine"
 
@@ -847,6 +887,7 @@ struct ConvertKrnlToAffinePass
   StringRef getArgument() const override { return "convert-krnl-to-affine"; }
 
   StringRef getDescription() const override { return "Lower Krnl dialect."; }
+//  // std::cout<< "option printing >>>>>>>>>>>>>>>" <<options <<std::endl;
 
   void runOnOperation() final;
 };
@@ -1040,7 +1081,103 @@ void ConvertKrnlToAffinePass::runOnOperation() {
   }
 
   delete currUnrollAndJamList;
+
+         funcOp.walk([&](AffineForOp forOp) {
+    bool isInnermost = true;
+    for (Operation &op : forOp.getBody()->getOperations()) {
+      if (isa<AffineForOp>(&op)) {
+        isInnermost = false;
+        break;
+      }
+    }
+
+
+    // If this is an innermost loop, vectorize it
+    if (isInnermost) {
+ //     std::cout << "in inner most ...." << std::endl;
+        mlir::affine::ReductionLoopMap reductionLoops;
+      llvm::DenseSet<mlir::Operation*> loops_2;
+
+      bool loadOpC = false;
+      bool storeOpC = false;
+      auto parentOp = forOp;
+      mlir::Value resultVal;
+
+      auto iterArgs = forOp.getRegionIterArgs();
+      mlir::arith::AtomicRMWKind reductionKind;
+      auto yieldedValues = forOp.getBody()->getTerminator()->getOperands();
+
+      if (iterArgs.empty() || yieldedValues.empty()) {
+ //       std::cout << "no iterArgs or yield results" << std::endl;
+        return;
+      }
+
+      bool reductionAdd;
+      for (auto &use : iterArgs[0].getUses()) {
+ 			resultVal = use.getOwner()->getResult(0);
+           	if (auto addOp = llvm::dyn_cast<mlir::arith::AddFOp>(use.getOwner())) {
+ //				std::cout << "Operation is arith::AddFOp" << std::endl;
+ 				reductionKind = mlir::arith::AtomicRMWKind::addf;
+         reductionAdd = true;
+ 			} else {
+ //       			std::cout << "Operation is NOT arith::AddFOp" << std::endl;
+             break;
+ 			}
+ 		}
+
+         if (mlir::OperationEquivalence::exactValueMatch(yieldedValues[0],  resultVal).succeeded() && reductionAdd) {
+ //             std::cout << "Match found: yieldedValues[0] and use.getOwner()->getResult(0) are equivalent!" << std::endl;
+             reductionLoops[forOp].push_back(mlir::affine::LoopReduction{reductionKind, 0, iterArgs[0]});
+         }
+
+      loops_2.insert(forOp);
+      for (Operation &op : forOp.getBody()->getOperations()) {
+         if (isa<AffineLoadOp>(&op)) {
+ //          std::cout << "in load Op" << std::endl;
+           loadOpC = true;
+         }
+         if (isa<AffineStoreOp>(&op)) {
+ //          std::cout << "in store Op" << std::endl;
+           op.dump();
+           storeOpC = true;
+         }
+       //  if (auto addOp = dyn_cast<arith::AddFOp>(&op)) {
+       //       std::cout << "in add Op walk" << std::endl;
+       //         Value lhs = addOp.getLhs();
+       //             reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, lhs});
+       //     }
+       }
+
+       // std::cout << "store OP ?>>>>>>>>>>>" << storeOp << std::endl;
+
+       auto test = loadOpC && !storeOpC;
+       auto tripcount = mlir::affine::getConstantTripCount(forOp);
+
+         if (tripcount.has_value() && tripcount.value() % 8 ==0 ) {
+ //      std::cout << " test var >>>>>>" <<  test << std::endl;
+       if (reductionLoops.size() > 0 && test) {
+ //        std::cout << " before >>>> vectorizing" << std::endl;
+         parentOp.dump();
+             AffineForOp parentForOp = forOp->getParentOfType<AffineForOp>();
+
+//    mlir::affine::vectorizeAffineLoops(parentOp, loops_2, {8}, {0});
+         try {
+             mlir::affine::vectorizeAffineLoops(parentOp, loops_2, {8}, {0}, reductionLoops=reductionLoops);
+         } catch (const std::exception &e) {
+             llvm::errs() << "Vectorization failed with exception: " << e.what() << "\n";
+         } catch (...) {
+             llvm::errs() << "Vectorization failed with unknown error.\n";
+         }
+
+//    mlir::affine::loopUnrollJamUpToFactor(parentForOp, 16);
+ //   std::cout << " afetr >>>> vectorizing" << std::endl;
+   //  parentOp.dump();
+    }
+   }
+    }
+   });
 }
+
 
 std::unique_ptr<Pass> createConvertKrnlToAffinePass() {
   return std::make_unique<ConvertKrnlToAffinePass>();
