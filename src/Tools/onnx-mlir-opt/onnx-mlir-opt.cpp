@@ -145,7 +145,7 @@ int main(int argc, char **argv) {
 
   // Registered passes can be expressed as command line flags, so they must
   // must be registered before command line options are parsed.
-  registerPasses(OptimizationLevel);
+  registerPasses(OptimizationLevel, 4);
 
   // Register any command line options.
   registerAsmPrinterCLOptions();

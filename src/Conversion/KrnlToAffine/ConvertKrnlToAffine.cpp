@@ -863,6 +863,9 @@ struct ConvertKrnlToAffinePass
     : public PassWrapper<ConvertKrnlToAffinePass, OperationPass<func::FuncOp>> {
   MLIR_DEFINE_EXPLICIT_INTERNAL_INLINE_TYPE_ID(ConvertKrnlToAffinePass);
 
+  int veln_v;
+  ConvertKrnlToAffinePass(int veln_v) : veln_v(veln_v) {}
+
   StringRef getArgument() const override { return "convert-krnl-to-affine"; }
 
   StringRef getDescription() const override { return "Lower Krnl dialect."; }
@@ -1133,15 +1136,15 @@ void ConvertKrnlToAffinePass::runOnOperation() {
       auto test = loadOpC && !storeOpC;
       auto tripcount = mlir::affine::getConstantTripCount(forOp);
  
-        if (tripcount.has_value() && tripcount.value() % 8 ==0 ) {
+        if (tripcount.has_value() && tripcount.value() % veln_v ==0 ) {
 //      std::cout << " test var >>>>>>" <<  test << std::endl;
       if (reductionLoops.size() > 0 && test) {
 //        std::cout << " before >>>> vectorizing" << std::endl;
         parentOp.dump();
             AffineForOp parentForOp = forOp->getParentOfType<AffineForOp>();
 
-   mlir::affine::vectorizeAffineLoops(parentOp, loops_2, {8}, {0}, reductionLoops = reductionLoops);
-   mlir::affine::loopUnrollJamUpToFactor(parentForOp, 16);
+   mlir::affine::vectorizeAffineLoops(parentOp, loops_2, {veln_v}, {0}, reductionLoops = reductionLoops);
+   mlir::affine::loopUnrollJamUpToFactor(parentForOp, veln_v);
 //   std::cout << " afetr >>>> vectorizing" << std::endl;
   //  parentOp.dump();
    }
@@ -1237,8 +1240,8 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 
 }
 
-std::unique_ptr<Pass> createConvertKrnlToAffinePass() {
-  return std::make_unique<ConvertKrnlToAffinePass>();
+std::unique_ptr<Pass> createConvertKrnlToAffinePass(int options) {
+  return std::make_unique<ConvertKrnlToAffinePass>(options);
 }
 
 void populateKrnlToAffineConversion(TypeConverter &typeConverter,
