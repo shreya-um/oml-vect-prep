@@ -557,11 +557,11 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
 
     if (bRank >= 2) {
     llvm::outs() << shape2[bRank-1] << ", " << shape2[bRank -2] << "\n";
-    if ( shape2[bRank - 1] == shape2[bRank - 2] ) {
-      isSq = true;
-    }
+//    if ( shape2[bRank - 1] == shape2[bRank - 2] ) {
+//      isSq = true;
+//    }
     if (shape2[bRank - 1] == shape[aRank - 1]) {
-      isSq = true;
+      isSq = true && change;
     }
     }
 

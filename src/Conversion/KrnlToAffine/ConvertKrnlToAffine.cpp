@@ -1141,10 +1141,24 @@ void ConvertKrnlToAffinePass::runOnOperation() {
       if (reductionLoops.size() > 0 && test) {
 //        std::cout << " before >>>> vectorizing" << std::endl;
         parentOp.dump();
-            AffineForOp parentForOp = forOp->getParentOfType<AffineForOp>();
+        AffineForOp parentForOp = forOp->getParentOfType<AffineForOp>();
 
-   mlir::affine::vectorizeAffineLoops(parentOp, loops_2, {veln_v}, {0}, reductionLoops = reductionLoops);
-   mlir::affine::loopUnrollJamUpToFactor(parentForOp, veln_v);
+        mlir::affine::vectorizeAffineLoops(parentOp, loops_2, {veln_v}, {0}, reductionLoops);
+
+        auto tpCount = mlir::affine::getConstantTripCount(parentForOp);
+        if (tpCount.has_value()) {
+          if (tpCount.value() % 32 == 0) {
+            // std::cout << " trip count is " << tpCount.value() << std::endl;
+            mlir::affine::loopUnrollJamUpToFactor(parentForOp, 32);
+          } else if (tpCount.value() % 16 == 0) {
+            mlir::affine::loopUnrollJamUpToFactor(parentForOp, 16);
+          } else if (tpCount.value() % 8 == 0) {
+            mlir::affine::loopUnrollJamUpToFactor(parentForOp, 8);
+          } else {
+            // Optionally handle case where trip count isn't divisible by 8, 16, or 32
+          }
+        }
+     //   std::cout << " trip count is " << tpCount.value() << std::endl;
 //   std::cout << " afetr >>>> vectorizing" << std::endl;
   //  parentOp.dump();
    }
@@ -1152,91 +1166,91 @@ void ConvertKrnlToAffinePass::runOnOperation() {
    }
   });
 
-
-
-  funcOp.walk([&](AffineForOp forOp) {
-   bool isInnermost = true;
-   for (Operation &op : forOp.getBody()->getOperations()) {
-     if (isa<AffineForOp>(&op)) {
-       isInnermost = false;
-       break;
-     }
-   }
-
-
-   // If this is an innermost loop, vectorize it
-   if (isInnermost) {
-     std::cout << "in inner most ...." << std::endl;
-       mlir::affine::ReductionLoopMap reductionLoops;
-     llvm::DenseSet<mlir::Operation*> loops_2;
-
-     bool loadOpC = false;
-     bool storeOpC = false;
-     auto parentOp = forOp;
-     mlir::Value resultVal;
-
-     auto iterArgs = forOp.getRegionIterArgs();
-     mlir::arith::AtomicRMWKind reductionKind;
-     auto yieldedValues = forOp.getBody()->getTerminator()->getOperands();
-
-     if (iterArgs.empty() || yieldedValues.empty()) {
-//       std::cout << "no iterArgs or yield results" << std::endl;
-       return;
-     }
-
-     bool reductionAdd;
-     for (auto &use : iterArgs[0].getUses()) {
-			resultVal = use.getOwner()->getResult(0);
-          	if (auto addOp = llvm::dyn_cast<mlir::arith::AddFOp>(use.getOwner())) {
-				std::cout << "Operation is arith::AddFOp" << std::endl;
-				reductionKind = mlir::arith::AtomicRMWKind::addf;
-        reductionAdd = true;
-			} else {
-//       			std::cout << "Operation is NOT arith::AddFOp" << std::endl;
-            break;
-			}
-		}
-
-        if (mlir::OperationEquivalence::exactValueMatch(yieldedValues[0],  resultVal).succeeded() && reductionAdd) {
-//             std::cout << "Match found: yieldedValues[0] and use.getOwner()->getResult(0) are equivalent!" << std::endl;
-            reductionLoops[forOp].push_back(mlir::affine::LoopReduction{reductionKind, 0, iterArgs[0]});
-        }
-
-     loops_2.insert(forOp);
-     for (Operation &op : forOp.getBody()->getOperations()) {
-        if (isa<AffineLoadOp>(&op)) {
-//          std::cout << "in load Op" << std::endl;
-          loadOpC = true;
-        }
-        if (isa<AffineStoreOp>(&op)) {
-//          std::cout << "in store Op" << std::endl;
-          op.dump();
-          storeOpC = true;
-        }
-      //  if (auto addOp = dyn_cast<arith::AddFOp>(&op)) {
-      //       std::cout << "in add Op walk" << std::endl;
-      //         Value lhs = addOp.getLhs();
-      //             reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, lhs});
-      //     }
-      }
-
-      // std::cout << "store OP ?>>>>>>>>>>>" << storeOp << std::endl;
-
-      auto test = loadOpC && !storeOpC;
-      auto tripcount = mlir::affine::getConstantTripCount(forOp);
-
-        if (tripcount.has_value() && tripcount.value() % 8 ==0 ) {
-//      std::cout << " test var >>>>>>" <<  test << std::endl;
-      if (reductionLoops.size() > 0 && test) {
-//        std::cout << " before >>>> vectorizing" << std::endl;
-        parentOp.dump();
-
-//   std::cout << " afetr >>>> vectorizing" << std::endl;
-    parentOp.dump();
-   }
-  }
-   }
-  });
+//
+//
+//  funcOp.walk([&](AffineForOp forOp) {
+//   bool isInnermost = true;
+//   for (Operation &op : forOp.getBody()->getOperations()) {
+//     if (isa<AffineForOp>(&op)) {
+//       isInnermost = false;
+//       break;
+//     }
+//   }
+//
+//
+//   // If this is an innermost loop, vectorize it
+//   if (isInnermost) {
+//     std::cout << "in inner most ...." << std::endl;
+//       mlir::affine::ReductionLoopMap reductionLoops;
+//     llvm::DenseSet<mlir::Operation*> loops_2;
+//
+//     bool loadOpC = false;
+//     bool storeOpC = false;
+//     auto parentOp = forOp;
+//     mlir::Value resultVal;
+//
+//     auto iterArgs = forOp.getRegionIterArgs();
+//     mlir::arith::AtomicRMWKind reductionKind;
+//     auto yieldedValues = forOp.getBody()->getTerminator()->getOperands();
+//
+//     if (iterArgs.empty() || yieldedValues.empty()) {
+////       std::cout << "no iterArgs or yield results" << std::endl;
+//       return;
+//     }
+//
+//     bool reductionAdd;
+//     for (auto &use : iterArgs[0].getUses()) {
+//			resultVal = use.getOwner()->getResult(0);
+//          	if (auto addOp = llvm::dyn_cast<mlir::arith::AddFOp>(use.getOwner())) {
+//				std::cout << "Operation is arith::AddFOp" << std::endl;
+//				reductionKind = mlir::arith::AtomicRMWKind::addf;
+//        reductionAdd = true;
+//			} else {
+////       			std::cout << "Operation is NOT arith::AddFOp" << std::endl;
+//            break;
+//			}
+//		}
+//
+//        if (mlir::OperationEquivalence::exactValueMatch(yieldedValues[0],  resultVal).succeeded() && reductionAdd) {
+////             std::cout << "Match found: yieldedValues[0] and use.getOwner()->getResult(0) are equivalent!" << std::endl;
+//            reductionLoops[forOp].push_back(mlir::affine::LoopReduction{reductionKind, 0, iterArgs[0]});
+//        }
+//
+//     loops_2.insert(forOp);
+//     for (Operation &op : forOp.getBody()->getOperations()) {
+//        if (isa<AffineLoadOp>(&op)) {
+////          std::cout << "in load Op" << std::endl;
+//          loadOpC = true;
+//        }
+//        if (isa<AffineStoreOp>(&op)) {
+////          std::cout << "in store Op" << std::endl;
+//          op.dump();
+//          storeOpC = true;
+//        }
+//      //  if (auto addOp = dyn_cast<arith::AddFOp>(&op)) {
+//      //       std::cout << "in add Op walk" << std::endl;
+//      //         Value lhs = addOp.getLhs();
+//      //             reductionLoops[forOp].push_back(mlir::affine::LoopReduction{mlir::arith::AtomicRMWKind::addf, 0, lhs});
+//      //     }
+//      }
+//
+//      // std::cout << "store OP ?>>>>>>>>>>>" << storeOp << std::endl;
+//
+//      auto test = loadOpC && !storeOpC;
+//      auto tripcount = mlir::affine::getConstantTripCount(forOp);
+//
+//        if (tripcount.has_value() && tripcount.value() % 8 ==0 ) {
+////      std::cout << " test var >>>>>>" <<  test << std::endl;
+//      if (reductionLoops.size() > 0 && test) {
+////        std::cout << " before >>>> vectorizing" << std::endl;
+//        parentOp.dump();
+//
+////   std::cout << " afetr >>>> vectorizing" << std::endl;
+//    parentOp.dump();
+//   }
+//  }
+//   }
+//  });
 
 }
 
