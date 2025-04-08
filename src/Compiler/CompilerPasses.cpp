@@ -43,6 +43,11 @@ using namespace mlir;
 
 namespace onnx_mlir {
 
+  llvm::cl::opt<bool> enableTiling(
+        "enableTiling",
+        llvm::cl::desc("affine enable tiling"),
+        llvm::cl::init(true));
+
 void configurePasses() {
   // Handle deprecated mcpu.
   if (!mcpu.empty()) {
@@ -196,13 +201,15 @@ void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
     }
   }
 
+  bool enableTiling_t = enableTiling.getValue();
+
   // Print Signatures of each op at runtime if enabled. Should not run
   // signature and instrument passes at the same time as time may include printf
   // overheads.
   if (instrumentSignatureString != "NONE")
     pm.addNestedPass<func::FuncOp>(onnx_mlir::createInstrumentONNXSignaturePass(
         instrumentSignatureString));
-  pm.addPass(onnx_mlir::createLowerToKrnlPass(/*enableTiling*/ optLevel >= 3,
+  pm.addPass(onnx_mlir::createLowerToKrnlPass(/*enableTiling*/ optLevel >= 3 && enableTiling_t,
       /*enableSIMD*/ optLevel >= 3 && !disableSimdOption, enableParallel,
       /*enableFastMath*/ optLevel >= 3 && enableFastMathOption,
       /*opsToCall*/ opsForCall));

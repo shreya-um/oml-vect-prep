@@ -14,7 +14,7 @@
 namespace onnx_mlir {
 
 // Makes select mlir and onnx-mlir passes available as command-line options.
-void registerPasses(int optLevel);
+void registerPasses(int optLevel, bool enableTiling);
 
 } // namespace onnx_mlir
 #endif

@@ -32,7 +32,7 @@ using namespace mlir;
 
 namespace onnx_mlir {
 
-void registerOMPasses(int optLevel) {
+void registerOMPasses(int optLevel, bool enableTiling) {
   // All passes implemented within onnx-mlir should register within this
   // function to make themselves available as a command-line option.
 
@@ -90,8 +90,8 @@ void registerOMPasses(int optLevel) {
     return krnl::createConvertKrnlToAffinePass();
   });
 
-  mlir::registerPass([optLevel]() -> std::unique_ptr<mlir::Pass> {
-    return createLowerToKrnlPass(/*enableTiling*/ optLevel >= 3,
+  mlir::registerPass([optLevel, enableTiling]() -> std::unique_ptr<mlir::Pass> {
+    return createLowerToKrnlPass(/*enableTiling*/ optLevel >= 3 && enableTiling,
         /*enableSIMD, should consider disableSimdOption*/ optLevel >= 3,
         /*enableParallel*/ false,
         /*enableFastMath*/ false, /*default is still off*/
@@ -179,10 +179,10 @@ void registerMLIRPasses() {
   });
 }
 
-void registerPasses(int optLevel) {
+void registerPasses(int optLevel, bool enableTiling) {
   registerMLIRPasses();
 
-  registerOMPasses(optLevel);
+  registerOMPasses(optLevel, enableTiling);
 
   // Register passes for accelerators.
   for (auto *accel : accel::Accelerator::getAccelerators())
