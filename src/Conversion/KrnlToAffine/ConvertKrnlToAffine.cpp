@@ -1161,13 +1161,14 @@ void ConvertKrnlToAffinePass::runOnOperation() {
              AffineForOp parentForOp = forOp->getParentOfType<AffineForOp>();
 
 //    mlir::affine::vectorizeAffineLoops(parentOp, loops_2, {8}, {0});
-         try {
+//         try {
              mlir::affine::vectorizeAffineLoops(parentOp, loops_2, {8}, {0}, reductionLoops=reductionLoops);
-         } catch (const std::exception &e) {
-             llvm::errs() << "Vectorization failed with exception: " << e.what() << "\n";
-         } catch (...) {
-             llvm::errs() << "Vectorization failed with unknown error.\n";
-         }
+             std::cout << "after vectorizing" << std::endl;
+//         } catch (const std::exception &e) {
+//             llvm::errs() << "Vectorization failed with exception: " << e.what() << "\n";
+//         } catch (...) {
+//             llvm::errs() << "Vectorization failed with unknown error.\n";
+//         }
 
 //    mlir::affine::loopUnrollJamUpToFactor(parentForOp, 16);
  //   std::cout << " afetr >>>> vectorizing" << std::endl;
