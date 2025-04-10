@@ -561,7 +561,7 @@ struct ONNXMatMulOpLowering : public OpConversionPattern<ONNXMatMulOp> {
 //      isSq = true;
 //    }
     if (shape2[bRank - 1] == shape[aRank - 1]) {
-      isSq = true && change;
+      isSq = true;
     }
     }
 

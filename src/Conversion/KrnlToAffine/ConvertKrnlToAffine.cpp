@@ -1095,7 +1095,7 @@ void ConvertKrnlToAffinePass::runOnOperation() {
        return;
      }
 
-     bool reductionAdd;
+     bool reductionAdd = false;
      for (auto &use : iterArgs[0].getUses()) {
 			resultVal = use.getOwner()->getResult(0);
           	if (auto addOp = llvm::dyn_cast<mlir::arith::AddFOp>(use.getOwner())) {
@@ -1103,13 +1103,15 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 				reductionKind = mlir::arith::AtomicRMWKind::addf;
         reductionAdd = true;
 			} else {
+                          reductionAdd = false;
 //       			std::cout << "Operation is NOT arith::AddFOp" << std::endl;
             break;
 			}
 		}
 
         if (mlir::OperationEquivalence::exactValueMatch(yieldedValues[0],  resultVal).succeeded() && reductionAdd) {
-//             std::cout << "Match found: yieldedValues[0] and use.getOwner()->getResult(0) are equivalent!" << std::endl;
+std::cout << "Match found: yieldedValues[0] and use.getOwner()->getResult(0) are equivalent!" << std::endl;
+std::cout << reductionAdd << std::endl;
             reductionLoops[forOp].push_back(mlir::affine::LoopReduction{reductionKind, 0, iterArgs[0]});
         }
 
@@ -1135,6 +1137,13 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 
       auto test = loadOpC && !storeOpC;
       auto tripcount = mlir::affine::getConstantTripCount(forOp);
+if (tripcount.has_value()) {
+    int value = tripcount.value();
+    if (value > veln_v && value > 8 && value % 8 == 0) {
+        veln_v = 8;
+    }
+}
+
  
         if (tripcount.has_value() && tripcount.value() % veln_v ==0 ) {
 //      std::cout << " test var >>>>>>" <<  test << std::endl;
@@ -1147,12 +1156,13 @@ void ConvertKrnlToAffinePass::runOnOperation() {
 
         auto tpCount = mlir::affine::getConstantTripCount(parentForOp);
         if (tpCount.has_value()) {
-          if (tpCount.value() % 32 == 0) {
+//          if (tpCount.value() % 32 == 0) {
             // std::cout << " trip count is " << tpCount.value() << std::endl;
-            mlir::affine::loopUnrollJamUpToFactor(parentForOp, 32);
-          } else if (tpCount.value() % 16 == 0) {
+//            mlir::affine::loopUnrollJamUpToFactor(parentForOp, 32);
+//          } else
+            if (tpCount.value()  > 16 && tpCount.value() % 16 == 0) {
             mlir::affine::loopUnrollJamUpToFactor(parentForOp, 16);
-          } else if (tpCount.value() % 8 == 0) {
+          } else if (tpCount.value()  > 8  && tpCount.value() % 8 == 0) {
             mlir::affine::loopUnrollJamUpToFactor(parentForOp, 8);
           } else {
             // Optionally handle case where trip count isn't divisible by 8, 16, or 32
