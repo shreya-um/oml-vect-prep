@@ -53,6 +53,21 @@ namespace onnx_mlir {
         llvm::cl::desc("affine vector lenght"),
         llvm::cl::init(4));
 
+        llvm::cl::opt<int> uf1(
+          "uf1",
+          llvm::cl::desc("affine vector lenght"),
+          llvm::cl::init(4));
+
+          llvm::cl::opt<int> uf2(
+            "uf2",
+            llvm::cl::desc("affine vector lenght"),
+            llvm::cl::init(4));
+
+            llvm::cl::opt<int> uf3(
+              "uf3",
+              llvm::cl::desc("affine vector lenght"),
+              llvm::cl::init(4));
+
 void configurePasses() {
   // Handle deprecated mcpu.
   if (!mcpu.empty()) {
@@ -224,9 +239,14 @@ void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
 
 void addKrnlToAffinePasses(mlir::PassManager &pm) {
   int veln_v = vlen.getValue();
+  int uf1_v = uf1.getValue();
+  int uf2_v = uf2.getValue();
+  int uf3_v = uf3.getValue();
+
+
 
   pm.addNestedPass<func::FuncOp>(
-      onnx_mlir::krnl::createConvertKrnlToAffinePass(veln_v));
+      onnx_mlir::krnl::createConvertKrnlToAffinePass(veln_v, uf1_v, uf2_v, uf3_v));
 }
 
 void addKrnlToLLVMPasses(
