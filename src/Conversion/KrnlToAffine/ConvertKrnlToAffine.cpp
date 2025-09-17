@@ -33,6 +33,7 @@
 
 #include <functional>
 #include <mutex>
+#include <iostream>
 
 #define DEBUG_TYPE "krnl_to_affine"
 
@@ -853,6 +854,54 @@ struct ConvertKrnlToAffinePass
 
 void ConvertKrnlToAffinePass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
+  funcOp.walk([&](Operation *op) {
+    if (auto call = dyn_cast<func::CallOp>(op)) {
+      llvm::outs() << "Found call to: " << call.getCallee() << "\n";
+      call.dump();
+    }
+  });
+
+
+  funcOp.walk([&](Operation *op) {
+    auto call = dyn_cast<func::CallOp>(op);
+    if (!call)
+      return;
+
+    // Only modify calls to "smd_matmul"
+    if (call.getCallee() != "smd_matmul")
+      return;
+
+    PatternRewriter rewriter(op->getContext());
+    rewriter.setInsertionPoint(call);
+
+    // Get the original result type
+    auto resultType = call.getResult(0).getType().dyn_cast<mlir::MemRefType>();
+    if (!resultType)
+      return;
+
+    // Allocate memory for the output
+    auto alloc = rewriter.create<mlir::memref::AllocOp>(call.getLoc(), resultType);
+
+    // Prepare operands: [alloc, original operands...]
+    SmallVector<Value> newOperands;
+    newOperands.push_back(alloc); // output buffer first
+    for (Value operand : call.getOperands())
+      newOperands.push_back(operand);
+
+    // Create new call to "smd_matmul_w" (void return)
+    rewriter.create<mlir::func::CallOp>(
+        call.getLoc(),
+        rewriter.getStringAttr("smd_matmul_w"),
+        mlir::TypeRange{}, // void
+        newOperands);
+
+    // Replace all uses of original result with alloc
+    call.getResult(0).replaceAllUsesWith(alloc);
+
+    // Erase original call
+    rewriter.eraseOp(call);
+  });
+
   if (funcOp.getBody().empty()) // external function: nothing to do
     return;
 

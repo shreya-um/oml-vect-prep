@@ -39,14 +39,14 @@
 #include "src/Dialect/ONNX/ONNXDialect.hpp"
 #include "src/Pass/Passes.hpp"
 
+#include <iostream>
+
 using namespace mlir;
 
 namespace onnx_mlir {
 
-  llvm::cl::opt<bool> enableTiling(
-        "enableTiling",
-        llvm::cl::desc("affine enable tiling"),
-        llvm::cl::init(true));
+llvm::cl::opt<bool> enableTiling("enableTiling",
+    llvm::cl::desc("affine enable tiling"), llvm::cl::init(true));
 
 void configurePasses() {
   // Handle deprecated mcpu.
@@ -178,6 +178,8 @@ void addONNXToMLIRPasses(mlir::PassManager &pm, bool targetCPU,
 
 void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
     std::string instrumentSignatureString, std::string ONNXOpsStatFormat) {
+
+
   if (enableCSE)
     // Eliminate common sub-expressions before lowering to Krnl.
     // TODO: enable this by default when we make sure it works flawlessly.
@@ -209,35 +211,59 @@ void addONNXToKrnlPasses(mlir::PassManager &pm, int optLevel, bool enableCSE,
   if (instrumentSignatureString != "NONE")
     pm.addNestedPass<func::FuncOp>(onnx_mlir::createInstrumentONNXSignaturePass(
         instrumentSignatureString));
-  pm.addPass(onnx_mlir::createLowerToKrnlPass(/*enableTiling*/ optLevel >= 3 && enableTiling_t,
+  //pm.addPass(mlir::createPrintIRPass());
+
+  pm.addPass(onnx_mlir::createLowerToKrnlPass(/*enableTiling*/ optLevel >= 3,
       /*enableSIMD*/ optLevel >= 3 && !disableSimdOption, enableParallel,
       /*enableFastMath*/ optLevel >= 3 && enableFastMathOption,
       /*opsToCall*/ opsForCall));
+      //pm.addPass(mlir::createPrintIRPass());
   // An additional pass of canonicalization is helpful because lowering
   // from ONNX dialect to Standard dialect exposes additional canonicalization
   // opportunities.
   pm.addPass(mlir::createCanonicalizerPass());
+  //pm.addPass(mlir::createPrintIRPass());
+
+  //pm.addPass(mlir::createPrintIRPass());
 }
 
 void addKrnlToAffinePasses(mlir::PassManager &pm) {
+  
   pm.addNestedPass<func::FuncOp>(
       onnx_mlir::krnl::createConvertKrnlToAffinePass());
+  //pm.addPass(mlir::createPrintIRPass());
 }
 
 void addKrnlToLLVMPasses(
     mlir::OpPassManager &pm, std::string outputNameNoExt, bool enableCSE) {
+//       pm.addPass(mlir::createPrintIRPass());
+// std::cout << "line 239 before func to llvm >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n";
+
+
   if (enableCSE)
     // Eliminate common sub-expressions before lowering to Krnl.
     // TODO: enable this by default when we make sure it works flawlessly.
-    pm.addPass(mlir::createCSEPass());
-  pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToSCFPass());
+ //   pm.addPass(mlir::createCSEPass());
+  //pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToSCFPass());
+ // pm.addPass(mlir::createLowerAffinePass());
+
+  pm.addPass(mlir::createCSEPass());
+  //pm.addPass(mlir::createPrintIRPass());
+
+  pm.addNestedPass<mlir::func::FuncOp>(mlir::createConvertVectorToSCFPass());
+//   pm.addPass(mlir::createPrintIRPass());
+// std::cout << " line 254 before func to llvm >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n";
+  //pm.addPass(mlir::createPrintIRPass());
+
   pm.addPass(mlir::createLowerAffinePass());
+  // pm.addPass(mlir::createPrintIRPass());
 
   // Early introduction of omp causes problems with bufferization, delay for
   // now. May revise this decision later.
 
   // After affine is lowered, KrnlRegion for affine scope can be removed.
   pm.addNestedPass<func::FuncOp>(krnl::createLowerKrnlRegionPass());
+  //pm.addPass(mlir::createPrintIRPass());
 
   if (enableParallel) {
     // Pass to ensure that memory allocated by parallel loops stay inside the
@@ -254,7 +280,7 @@ void addKrnlToLLVMPasses(
   // Hoist allocations out of loop nests to avoid stack overflow.
   pm.addPass(bufferization::createBufferLoopHoistingPass());
 
-  // Use MLIR buffer deallocation pass to emit buffer deallocs.
+  // Use MLIR buffer deallocation pass to emit buffer deallocs.z
   // Currently this has to be done *after* lowering the affine dialect because
   // operations in that dialect do not conform to the requirements explained
   // in https://mlir.llvm.org/docs/BufferDeallocationInternals.
@@ -283,19 +309,25 @@ void addKrnlToLLVMPasses(
   // pm.addNestedPass<func::FuncOp>(krnl::createConvertSeqToMemrefPass());
 
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
+  //pm.addPass(mlir::createPrintIRPass());
 
   if (profileIR)
     pm.addNestedPass<func::FuncOp>(onnx_mlir::createInstrumentCleanupPass());
 
   if (enableBoundCheck)
     pm.addPass(mlir::createGenerateRuntimeVerificationPass());
+  //pm.addPass(mlir::createPrintIRPass());
   pm.addPass(krnl::createConvertKrnlToLLVMPass(verifyInputTensors,
       /*useLRODATA=*/(modelSize == ModelSize::large),
       /*storeConstantsToFile=*/storeConstantsToFile,
       constantsToFileSingleThreshold, constantsToFileTotalThreshold,
       outputNameNoExt, enableParallel));
+
   pm.addPass(mlir::createReconcileUnrealizedCastsPass());
   pm.addPass(mlir::createCanonicalizerPass());
+std::cout << " line 319 before func to llvm >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n";
+  pm.addPass(mlir::createConvertFuncToLLVMPass());
+std::cout << " line 319 after func to llvm >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n";
 }
 
 InputIRLevelType determineInputIRLevel(mlir::OwningOpRef<ModuleOp> &module) {

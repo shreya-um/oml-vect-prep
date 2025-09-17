@@ -238,7 +238,7 @@ public:
           /* then full tiles */ [&](const AffineBuilderKrnlMem &createAffine) {
           genSimdMatMat(createAffine, matmulOp, elementType, aStart, bStart,
              cStart, iComputeTileSize, jComputeTileSize, kComputeTileSize,
-            vectorLen, fullUnrollAndJam);
+            vectorLen, false);
           }, 
           /* Else has some partial tiles */ 
           [&](const AffineBuilderKrnlMem &createAffine) {
@@ -364,7 +364,7 @@ private:
     // Generate the vector type conversions.
     assert(VL == archVL && "vector length and VL must be identical for now");
     VectorType vecType = VectorType::get({VL}, elementType);
-    int64_t iUnrollFactor = iLit;
+    int64_t iUnrollFactor = 1;
     assert(iUnrollFactor % VL == 0 && "i blocking should be a multiple of VL");
 
     // Have to privatize CTmpType by unroll factor.
@@ -445,7 +445,7 @@ private:
     // Generate the vector type conversions.
     int64_t VL = vectorLen.getLiteral();
     VectorType vecType = VectorType::get({VL}, elementType);
-    int64_t unrollFactor = (unrollJam && I.isLiteral()) ? I.getLiteral() : 1;
+    int64_t unrollFactor =  0;
     // Have to privatize CTmpType by unroll factor (1 if none).
     MemRefType CTmpType = MemRefType::get({unrollFactor}, vecType);
     assert(BUFFER_ALIGN >= gDefaultAllocAlign);
@@ -506,7 +506,7 @@ private:
     if (unrollJam && (I.isLiteral() || K.isLiteral())) {
       auto list = getUnrollAndJamList(op);
       if (K.isLiteral()) {
-        int64_t kUnroll = K.getLiteral();
+        int64_t kUnroll =0;
         // We know there is no unrolling along I, make a bigger cutoff.
         int64_t cutoff = (!I.isLiteral() || I.getLiteral() < 2) ? 8 : 4;
         if (kUnroll >= cutoff) {
