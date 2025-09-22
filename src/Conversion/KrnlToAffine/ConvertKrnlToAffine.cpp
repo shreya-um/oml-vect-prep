@@ -34,9 +34,12 @@
 #include <functional>
 #include <mutex>
 
+#include <iostream>
+
 #define DEBUG_TYPE "krnl_to_affine"
 
 using namespace mlir;
+using namespace std; 
 using namespace mlir::affine;
 
 namespace onnx_mlir {
@@ -853,6 +856,7 @@ struct ConvertKrnlToAffinePass
 
 void ConvertKrnlToAffinePass::runOnOperation() {
   func::FuncOp funcOp = getOperation();
+std::cout << " in line 859\n";
   if (funcOp.getBody().empty()) // external function: nothing to do
     return;
 

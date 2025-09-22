@@ -23,6 +23,7 @@
 #include "src/Compiler/OptionUtils.hpp"
 #include "src/Conversion/ONNXToKrnl/ONNXToKrnlCommon.hpp"
 #include "src/Dialect/Mlir/VectorMachineSupport.hpp"
+#include <iostream>
 
 using namespace mlir;
 
@@ -73,7 +74,7 @@ private:
   // data type list:
   //     "i1" / "i8" / "i16" / "i32" / "i64"
   //     "ui8" / "ui16" / "ui32" / "ui64"
-  //     "f16" / "f32" / "f64"
+  //     "f32" / "f32" / "f64"
   void concatTypeString(
       Type argType, Attribute attr, llvm::raw_ostream &dstream) const {
     std::string comma = std::string("");
@@ -175,7 +176,7 @@ private:
 };
 
 std::map<std::string, std::string> ONNXEntryPointLowering::typeMap = {
-    {std::string(" f16 "), std::string(" \"f16\" ")},
+    {std::string(" f32 "), std::string(" \"f32\" ")},
     {std::string(" f32 "), std::string(" \"f32\" ")},
     {std::string(" f64 "), std::string(" \"f64\" ")},
     {std::string(" i32 "), std::string(" \"i32\" ")},
@@ -215,7 +216,7 @@ void populateONNXToKrnlConversionPattern(RewritePatternSet &patterns,
   populateLoweringONNXSoftmaxOpPattern(patterns, typeConverter, ctx, enableParallel);
   populateLoweringONNXTopKOpPattern(patterns, typeConverter, ctx);
   populateLoweringONNXTriluOpPattern(patterns, typeConverter, ctx);
-  populateLoweringONNXMatMulOpPattern(patterns, typeConverter, ctx, dimAnalysis, enableTiling, enableSIMD, enableParallel);
+  // populateLoweringONNXMatMulOpPattern(patterns, typeConverter, ctx, dimAnalysis, enableTiling, enableSIMD, enableParallel);
   populateLoweringONNXMatMulIntegerOpPattern(patterns, typeConverter, ctx);
   populateLoweringONNXRandomNormalOpPattern(patterns, typeConverter, ctx);
   populateLoweringONNXRandomNormalLikeOpPattern(patterns, typeConverter, ctx);
@@ -359,13 +360,13 @@ void FrontendToKrnlLoweringPass::runOnOperation() {
   DimAnalysis *dimAnalysis = new DimAnalysis(module);
   dimAnalysis->analyze();
 
-  // The first thing to define is the conversion target. This will define the
-  // final target for this lowering.
+  // // The first thing to define is the conversion target. This will define the
+  // // final target for this lowering.
   ConversionTarget target(getContext());
 
   // We define the specific operations, or dialects, that are legal targets
   // for this lowering.
-  target.addLegalDialect<KrnlDialect, affine::AffineDialect,
+  target.addLegalDialect<KrnlDialect, affine::AffineDialect, 
       arith::ArithDialect, func::FuncDialect, linalg::LinalgDialect,
       math::MathDialect, vector::VectorDialect, memref::MemRefDialect,
       shape::ShapeDialect, scf::SCFDialect, cf::ControlFlowDialect>();
@@ -432,6 +433,125 @@ void FrontendToKrnlLoweringPass::runOnOperation() {
   });
 
   // Define patterns.
+
+
+
+
+
+// Collect shapes for all three operands of each MatMul op
+std::vector<std::tuple<std::vector<int64_t>, std::vector<int64_t>, std::vector<int64_t>>> matmulOperandDims;
+
+
+  module.walk([&](Operation *op) {
+    // Check if the op has the "onnx_node_name" attribute
+    if (auto nameAttr = op->getAttrOfType<mlir::StringAttr>("onnx_node_name")) {
+     // llvm::outs() << "onnx_node_name: " << nameAttr.getValue() << "\n";
+
+      if (nameAttr.getValue() == "/model/layers.0/self_attn/Gather_3") {
+      //  op->dump();
+      }
+    }
+});
+
+module.walk([&](Operation *op) {
+  if (op->getName().getStringRef() == "onnx.MatMul") {
+//op->dump();
+    auto aType = op->getOperand(0).getType().dyn_cast<mlir::RankedTensorType>();
+    auto bType = op->getOperand(1).getType().dyn_cast<mlir::RankedTensorType>();
+    auto cType = op->getResult(0).getType().dyn_cast<mlir::RankedTensorType>();
+    if (aType && bType && cType && aType.hasRank() && bType.hasRank() && cType.hasRank()) {
+      matmulOperandDims.push_back({aType.getShape(), bType.getShape(), cType.getShape()});
+    }
+  }
+});
+
+mlir::MLIRContext *context = &getContext();
+context->getOrLoadDialect<mlir::func::FuncDialect>();
+PatternRewriter rewriter(context);
+
+// Declare smd_matmul for each unique shape
+
+  for (const auto &[aDims, bDims, cDims] : matmulOperandDims) {
+    auto f32Type = mlir::Float32Type::getF32(rewriter.getContext());
+    auto aTensorType = mlir::RankedTensorType::get(aDims, f32Type);
+    auto bTensorType = mlir::RankedTensorType::get(bDims, f32Type);
+    auto cTensorType = mlir::RankedTensorType::get(cDims, f32Type);
+    auto funcType = rewriter.getFunctionType({aTensorType, bTensorType}, {cTensorType});
+
+    // Helper to stringify dims
+    auto dimsToStr = [](const std::vector<int64_t> &dims) {
+      std::string s;
+      for (auto d : dims) s += "_" + std::to_string(d);
+      return s;
+    };
+
+std::string funcName = "smd_matmul";
+auto dimsToStr_b = [](const std::vector<int64_t> &dims) {
+  std::string s;
+  for (auto d : dims) s += "_" + std::to_string(d == int64_t(-9223372036854775808) ? 1 : d);
+  return s;
+};
+funcName += dimsToStr_b(aDims);
+funcName += dimsToStr_b(bDims);
+funcName += dimsToStr_b(cDims);
+
+    if (!module.lookupSymbol<mlir::func::FuncOp>(funcName)) {
+      rewriter.setInsertionPointToStart(module.getBody());
+      auto funcOp = rewriter.create<mlir::func::FuncOp>(module.getLoc(), funcName, funcType);
+      funcOp.setPrivate();
+      funcOp->setAttr("llvm.emit_c_interface", rewriter.getUnitAttr());
+    }
+  }
+
+ // module.dump();
+// Replace MatMul ops with calls to smd_matmul
+module.walk([&](Operation *op) {
+  if (op->getName().getStringRef() == "onnx.MatMul") {
+    rewriter.setInsertionPoint(op);
+
+    auto aType = op->getOperand(0).getType().dyn_cast<mlir::RankedTensorType>();
+    auto bType = op->getOperand(1).getType().dyn_cast<mlir::RankedTensorType>();
+    auto cType = op->getResult(0).getType().dyn_cast<mlir::RankedTensorType>();
+
+   // auto dimsToStr = [](const std::vector<int64_t> &dims) {
+     // std::string s;
+     // for (auto d : dims) s += "_" + std::to_string(d);
+    //  return s;
+  //  };
+
+    std::string funcName = "smd_matmul";
+    auto dimsToStr = [](const std::vector<int64_t> &dims) {
+      std::string s;
+      for (auto d : dims) s += "_" + std::to_string(d == int64_t(-9223372036854775808) ? 1 : d);
+      return s;
+    };
+
+if (aType && bType && cType) {
+  funcName += dimsToStr(aType.getShape());
+  funcName += dimsToStr(bType.getShape());
+  funcName += dimsToStr(cType.getShape());
+  // Print the shapes
+  std::cout << "MatMul operand shapes: A = [";
+  for (auto d : aType.getShape()) std::cout << d << " ";
+  std::cout << "], B = [";
+  for (auto d : bType.getShape()) std::cout << d << " ";
+  std::cout << "], C = [";
+  for (auto d : cType.getShape()) std::cout << d << " ";
+  std::cout << "]" << std::endl;
+}
+
+    Type resultType = op->getResult(0).getType();
+    auto loc = op->getLoc();
+    auto callee = rewriter.getStringAttr(funcName);
+    auto call = rewriter.create<func::CallOp>(
+        loc,
+        callee,
+        TypeRange{resultType},
+        op->getOperands());
+    rewriter.replaceOp(op, call.getResults());
+  }
+});
+
   populateONNXToKrnlConversionPattern(patterns, krnlTypeConverter,
       &getContext(), dimAnalysis, enableTiling, enableSIMD, enableParallel,
       enableFastMath, opsForCall);

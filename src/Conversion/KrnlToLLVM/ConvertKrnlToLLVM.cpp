@@ -822,7 +822,9 @@ void ConvertKrnlToLLVMPass::runOnOperation() {
   // Append a unique string to each entry point function.
   // The string is getting from the module's attribute
   // `onnx-mlir.symbol-postfix`.
+  std::cout<<"inline 825\n";
   PostfixEntrypointNames(module);
+  std::cout<<"inline 827\n";
 
   KRNL_ENTRY_POINT_ID = 0;
 
@@ -842,8 +844,11 @@ void ConvertKrnlToLLVMPass::runOnOperation() {
   std::map<std::string, SmallVector<MemRefType, 4>> outputMemRefTypes;
   recordInputOutputMemRefTypes(module, inputMemRefTypes, outputMemRefTypes);
 
+  std::cout<<"inline 847\n";
   // Determine whether the module has a single entry point or not.
   bool singleEntryPoint = hasSingleEntryPoint(module);
+  std::cout<<"inline 850\n";
+
 
   // Determine whether an output OMTensor should own the underlying buffer or
   // not.
@@ -861,18 +866,22 @@ void ConvertKrnlToLLVMPass::runOnOperation() {
         (uint64_t)constantsToFileTotalThreshold * 1024 * 1024 * 1024);
   }
 
+        std::cout<<"inline 872\n";
   // Request C wrapper emission via attribute.
   for (auto func : module.getOps<func::FuncOp>()) {
     func->setAttr(LLVM::LLVMDialect::getEmitCWrapperAttrName(),
         UnitAttr::get(&getContext()));
   }
 
+        std::cout<<"inline 881\n";
   // Define the target for this lowering i.e. the LLVM dialect.
   ConversionTarget target(*ctx);
   target.addLegalDialect<LLVM::LLVMDialect>();
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<UnrealizedConversionCastOp>();
+  target.addIllegalDialect<func::FuncDialect>();
 
+std::cout<<"inline 888\n";
   // Conversion target for accelerators.
   for (auto *accel : onnx_mlir::accel::Accelerator::getAccelerators())
     accel->conversionTargetKrnlToLLVM(target);
@@ -898,6 +907,7 @@ void ConvertKrnlToLLVMPass::runOnOperation() {
       inSigGlobalOps, outSigGlobalOps, inputMemRefTypes, outputMemRefTypes,
       verifyInputTensors, enableParallel);
 
+std::cout<<"inline 916\n";
   // Rewrite patterns for accelerators.
   for (auto *accel : onnx_mlir::accel::Accelerator::getAccelerators())
     accel->rewritePatternKrnlToLLVM(patterns, typeConverter, ctx);
@@ -908,7 +918,7 @@ void ConvertKrnlToLLVMPass::runOnOperation() {
           applyFullConversion(getOperation(), target, std::move(patterns)))) {
     signalPassFailure();
   }
-
+std::cout<<"inline 929\n";
   // Generate signature functions.
   if (entryGlobalOps.size() >= 1)
     genSignatureFunction(
