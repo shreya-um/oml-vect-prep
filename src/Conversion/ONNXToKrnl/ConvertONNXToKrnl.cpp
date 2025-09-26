@@ -472,10 +472,10 @@ PatternRewriter rewriter(context);
 // Declare smd_matmul for each unique shape
 
   for (const auto &[aDims, bDims, cDims] : matmulOperandDims) {
-    auto f32Type = mlir::Float32Type::getF32(rewriter.getContext());
-    auto aTensorType = mlir::RankedTensorType::get(aDims, f32Type);
-    auto bTensorType = mlir::RankedTensorType::get(bDims, f32Type);
-    auto cTensorType = mlir::RankedTensorType::get(cDims, f32Type);
+    auto f16Type = mlir::Float16Type::get(rewriter.getContext());
+    auto aTensorType = mlir::RankedTensorType::get(aDims, f16Type);
+    auto bTensorType = mlir::RankedTensorType::get(bDims, f16Type);
+    auto cTensorType = mlir::RankedTensorType::get(cDims, f16Type);
     auto funcType = rewriter.getFunctionType({aTensorType, bTensorType}, {cTensorType});
 
     // Helper to stringify dims
