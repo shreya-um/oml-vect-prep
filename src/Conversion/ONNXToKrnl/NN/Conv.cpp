@@ -40,8 +40,6 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
     MultiDialectBuilder<KrnlBuilder, IndexExprBuilderForKrnl, SCFBuilder,
         MathBuilder, MemRefBuilder>
         create(rewriter, loc);
-    // Spatial data starts from the second dimension.
-    int spatialStartIndex = 2;
 
     auto inputOperand = operandAdaptor.getX();
     auto filterOperand = operandAdaptor.getW();
@@ -49,7 +47,6 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
     bool hasBias = !mlir::isa<NoneType>(biasOperand.getType());
     int64_t groupNum = convOp.getGroup();
     IndexExpr G = LitIE(groupNum);
-    Value fZero = create.math.constant(memRefType.getElementType(), 0);
 
     // Bounds for output sizes: [N x CO x HO x WO]:
     // where N is Batch Size,
@@ -160,7 +157,7 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
                 [&](const SCFBuilder &createSCF){
                   // TRUE
                   // We create the index vector, load it from inputOperand and yield it
-                  SmallVector<IndexExpr, 4> inputIndices = {DimIE(outerIndices[0]), c_im, row, col};
+                  SmallVector<IndexExpr, 4> inputIndices = {DimIE(outerIndices[0]), absolute_c_im, row, col};
                   Value val = create.krnl.loadIE(inputOperand, inputIndices);
                   create.krnl.storeIE(val, dataCol, {c, col_index});
                 }, 
@@ -206,7 +203,14 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
             SmallVector<IndexExpr, 4> C_indices = {DimIE(outerIndices[0]), outputChannel, C_oh, C_ow};
 
             // Here we could initialize directly with bias if needed
-            Value initVal = create.math.constant(elementType, 0);
+            Value initVal;
+            if(hasBias){
+              initVal = create.krnl.loadIE(biasOperand, {outputChannel});
+            }
+            else{
+              initVal = create.math.constant(elementType, 0);
+            }
+
             create.krnl.storeIE(initVal, alloc, C_indices);
 
             // k loop
@@ -247,18 +251,9 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
 
 
     IndexExpr iZero = LitIE(0);
-    IndexExpr iOne = LitIE(1);
 
-    SmallVector<Value, 3> lbsStorage, ubsStorage, stepsStorage;
     SmallVector<IndexExpr, 3> outerLbs = {iZero, iZero, iZero};
     SmallVector<IndexExpr, 3> outerUbs = {N, G, COPerGroup};
-    SmallVector<IndexExpr, 3> outerSteps = {iOne, iOne, iOne};
-    IndexExpr::getValues(outerLbs, lbsStorage);
-    IndexExpr::getValues(outerUbs, ubsStorage);
-    IndexExpr::getValues(outerSteps, stepsStorage);
-    ValueRange parLbs(lbsStorage);
-    ValueRange steps(stepsStorage);
-    ValueRange parUbs(ubsStorage);
     
 
     ValueRange outerLoops = create.krnl.defineLoops(3);
