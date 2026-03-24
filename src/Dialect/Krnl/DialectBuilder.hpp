@@ -117,6 +117,12 @@ struct KrnlBuilder : public DialectBuilder {
       mlir::ValueRange optimizedLoops, mlir::ArrayRef<IndexExpr> lbs,
       mlir::ArrayRef<IndexExpr> ubs, KrnlLoopBodyFn bodyBuilderFn) const;
 
+  // Iterate supporting YIELD operation
+  mlir::ValueRange iterateIEY(mlir::ValueRange originalLoops,
+      mlir::ValueRange optimizedLoops, mlir::ArrayRef<IndexExpr> lbs,
+      mlir::ArrayRef<IndexExpr> ubs, mlir::ValueRange iterArgsInit,
+      KrnlLoopBody2Fn bodyBuilderFn) const;
+
   // Deprecated.
   mlir::KrnlIterateOp iterateIE(mlir::ValueRange originalLoops,
       mlir::ValueRange optimizedLoops, mlir::ArrayRef<IndexExpr> lbs,

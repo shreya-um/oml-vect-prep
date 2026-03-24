@@ -217,8 +217,9 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
             ValueRange kLoop = create.krnl.defineLoops(1);
             SmallVector<IndexExpr, 1> kLbs = {LitIE(0)};
             SmallVector<IndexExpr, 1> kUbs = {p_limit};
-            create.krnl.iterateIE(kLoop, kLoop, kLbs, kUbs,
-                    [&](const KrnlBuilder &createKrnl, ValueRange kIndices){
+
+            ValueRange kYielded = create.krnl.iterateIEY(kLoop, kLoop, kLbs, kUbs, {initVal},
+                    [&](const KrnlBuilder &createKrnl, ValueRange kIndices, ValueRange iterArgs){
                       MultiDialectBuilder<KrnlBuilder, IndexExprBuilderForKrnl, MathBuilder>
                         createK(createKrnl);
                       
@@ -228,6 +229,7 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
                       IndexExpr k_kw = k % KW;
                       IndexExpr k_kh = k.floorDiv(KW) % KH;
                       IndexExpr k_c = k.floorDiv(KH * KW);
+
                       // We use outputChannel to know the filter we are in
                       SmallVector<IndexExpr, 4> A_dimensions = {outputChannel, k_c, k_kh, k_kw};
 
@@ -242,10 +244,12 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
                       Value mult = createK.math.mul(aVal, bVal);
 
                       // C[i][j] += mult
-                      Value currentVal = createK.krnl.loadIE(alloc, C_indices);
+                      Value currentVal = iterArgs[0];
                       Value newVal = createK.math.add(currentVal, mult);
-                      createK.krnl.storeIE(newVal, alloc, C_indices);
+                      createK.krnl.yield(newVal);
                     });
+
+            create.krnl.storeIE(kYielded[0], alloc, C_indices);
           });
     };
 

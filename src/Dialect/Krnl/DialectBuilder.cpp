@@ -273,6 +273,35 @@ void KrnlBuilder::iterateIE(ValueRange originalLoops, ValueRange optimizedLoops,
   iterateIE(originalLoops, optimizedLoops, lbs, ubs, {}, bodyBuilderFnWrapper);
 }
 
+// Tried using the deprecated version of iterateIE
+ValueRange KrnlBuilder::iterateIEY(ValueRange originalLoops,
+    ValueRange optimizedLoops, ArrayRef<IndexExpr> lbs, ArrayRef<IndexExpr> ubs,
+    ValueRange inits, KrnlLoopBody2Fn bodyBuilderFn) const {
+    
+  // Check that originalLoops, lbs, and ubs have the same rank.
+  assert(originalLoops.size() == lbs.size() && "expected same rank");
+  assert(originalLoops.size() == ubs.size() && "expected same rank");
+  
+  auto iterateOp = KrnlIterateOp::create(b(), loc(), originalLoops, optimizedLoops, lbs,
+      ubs, inits,
+      [&](OpBuilder &builder, Location loc, ValueRange origLoopArgs,
+          ValueRange args, ValueRange iterArgs) {
+          
+        // Eliminate ghost yield
+        mlir::Block *block = builder.getInsertionBlock();
+        if (block && !block->empty()) {
+            block->back().erase();
+        }
+
+        KrnlBuilder createKrnl(builder, loc);
+        ValueRange indices = createKrnl.getInductionVarValue(optimizedLoops);
+        bodyBuilderFn(createKrnl, indices, iterArgs);
+      });
+      
+  // Return the loop result
+  return iterateOp.getResults();
+}
+
 void KrnlBuilder::iterateIEWithOrigLoop(ValueRange originalLoops,
     ValueRange optimizedLoops, ArrayRef<IndexExpr> lbs, ArrayRef<IndexExpr> ubs,
     KrnlLoopBodyFn bodyBuilderFn) const {
