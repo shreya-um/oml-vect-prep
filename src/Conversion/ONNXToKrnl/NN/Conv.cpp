@@ -170,6 +170,33 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
 
   // GEMM
 
+      MemRefType filterColType = MemRefType::get({mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic}, elementType);
+      Value filterCol = create.mem.alignedAlloc(filterColType, {COPerGroup, dataColRows});
+
+      ValueRange flattenLoops = create.krnl.defineLoops(2);
+      SmallVector<IndexExpr, 2> flattenLbs = {LitIE(0), LitIE(0)};
+      SmallVector<IndexExpr, 2> flattenUbs = {COPerGroup, dataColRows}; // i, k
+
+      create.krnl.iterateIE(flattenLoops, flattenLoops, flattenLbs, flattenUbs,
+          [&](const KrnlBuilder &createKrnl, ValueRange flattenIndices){
+              MultiDialectBuilder<KrnlBuilder, IndexExprBuilderForKrnl> createF(createKrnl);
+              IndexExprScope flattenScope(createKrnl);
+              
+              DimIndexExpr f_i(flattenIndices[0]);
+              DimIndexExpr f_k(flattenIndices[1]);
+
+              // All indexes are calculated here instead of inside GEMM
+              IndexExpr k_kw = f_k % KW;
+              IndexExpr k_kh = f_k.floorDiv(KW) % KH;
+              IndexExpr k_c = f_k.floorDiv(KH * KW);
+
+              IndexExpr outputChannel = DimIE(outerIndices[1]) * COPerGroup + f_i;
+              SmallVector<IndexExpr, 4> A_dimensions = {outputChannel, k_c, k_kh, k_kw};
+
+              Value aVal = createF.krnl.loadIE(filterOperand, A_dimensions);
+              createF.krnl.storeIE(aVal, filterCol, {f_i, f_k});
+          });
+
       IndexExpr n_limit = DimIE(COPerGroup);  // Rows of A
       IndexExpr m_limit = OH * OW;            // Columns of B (how many pixels in the output)
       IndexExpr p_limit = dataColRows;        // Cols of A and Rows of B (kernel size)
@@ -225,19 +252,11 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
                       
                       DimIndexExpr k(kIndices[0]);
 
-                      // We calculate A indexes
-                      IndexExpr k_kw = k % KW;
-                      IndexExpr k_kh = k.floorDiv(KW) % KH;
-                      IndexExpr k_c = k.floorDiv(KH * KW);
-
-                      // We use outputChannel to know the filter we are in
-                      SmallVector<IndexExpr, 4> A_dimensions = {outputChannel, k_c, k_kh, k_kw};
-
-                      // We calculate B indexes
+                      // Now we have clean indexes here
+                      SmallVector<IndexExpr, 2> A_dimensions = {i, k};
                       SmallVector<IndexExpr, 2> B_dimensions = {k, j};
                       
-                      // Load values from A and B
-                      Value aVal = createK.krnl.loadIE(filterOperand, A_dimensions);
+                      Value aVal = createK.krnl.loadIE(filterCol, A_dimensions);
                       Value bVal = createK.krnl.loadIE(dataCol, B_dimensions);
 
                       // Multiply A * B
@@ -253,14 +272,14 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
           });
     };
 
-
+// We change this from 3 to 2 loops, COPerGroup is not needed
     IndexExpr iZero = LitIE(0);
 
-    SmallVector<IndexExpr, 3> outerLbs = {iZero, iZero, iZero};
-    SmallVector<IndexExpr, 3> outerUbs = {N, G, COPerGroup};
+    SmallVector<IndexExpr, 2> outerLbs = {iZero, iZero};
+    SmallVector<IndexExpr, 2> outerUbs = {N, G};
     
 
-    ValueRange outerLoops = create.krnl.defineLoops(3);
+    ValueRange outerLoops = create.krnl.defineLoops(2);
     if (enableParallel)
       tryCreateKrnlParallel(
           create.krnl, op, "conv", outerLoops, outerLbs, outerUbs, 0, 1);
