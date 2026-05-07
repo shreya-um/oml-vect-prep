@@ -448,7 +448,7 @@ void addKrnlToLLVMPasses(
     pm.addPass(mlir::createCSEPass());
   pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToSCFPass());
   pm.addPass(mlir::createLowerAffinePass());
-
+  
   // Early introduction of omp causes problems with bufferization, delay for
   // now. May revise this decision later.
 
@@ -498,6 +498,9 @@ void addKrnlToLLVMPasses(
   // pm.addNestedPass<func::FuncOp>(krnl::createConvertSeqToMemrefPass());
 
   pm.addPass(mlir::memref::createFoldMemRefAliasOpsPass());
+  
+  pm.addNestedPass<func::FuncOp>(mlir::createConvertVectorToLLVMPass());
+  
   // This pass is required on s390x targets to ensure all vector operations
   // are properly lowered to LLVM dialect. (e.g., vector.to_elements)
   pm.addPass(mlir::createConvertVectorToLLVMPass());

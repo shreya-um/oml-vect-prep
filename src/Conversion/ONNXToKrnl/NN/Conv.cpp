@@ -93,8 +93,28 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
       Type elementType = memRefType.getElementType();
       // We create a 2D matrix to let the compiler use matrix optimizations
       // Instead of copying the 1D logic from the pseudo-code
-      MemRefType dataColType = MemRefType::get({mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic}, elementType);
-      Value dataCol = create.mem.alignedAlloc(dataColType, {dataColRows, dataColCols});
+      //MemRefType dataColType = MemRefType::get({mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic}, elementType);
+      
+      IndexExpr p_limit_padded = ((dataColRows + LitIE(15)).floorDiv(16)) * 16;
+
+      SmallVector<int64_t, 2> dataColShape = {mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic};
+      if (dataColCols.isLiteral() && p_limit_padded.isLiteral()) {
+          // Si sabemos los tamaños, los fijamos en piedra (ej. 3025 x 368)
+          dataColShape[0] = dataColCols.getLiteral();
+          dataColShape[1] = p_limit_padded.getLiteral();
+      }
+      MemRefType dataColType = MemRefType::get(dataColShape, elementType);
+
+      Value dataCol = create.mem.alignedAlloc(dataColType, {dataColCols, p_limit_padded});
+
+      Value zeroVal = create.math.constant(elementType, 0);
+      ValueRange zeroDataLoops = create.krnl.defineLoops(2);
+      create.krnl.iterateIE(zeroDataLoops, zeroDataLoops, {LitIE(0), LitIE(0)}, {dataColCols, p_limit_padded},
+          [&](const KrnlBuilder &b, ValueRange indices) {
+              DimIndexExpr i0(indices[0]);
+              DimIndexExpr i1(indices[1]);
+              b.storeIE(zeroVal, dataCol, {i0, i1});
+          });
 
       // We need 3 nested loops
       ValueRange im2colLoops = create.krnl.defineLoops(3);
@@ -159,19 +179,35 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
                   // We create the index vector, load it from inputOperand and yield it
                   SmallVector<IndexExpr, 4> inputIndices = {DimIE(outerIndices[0]), absolute_c_im, row, col};
                   Value val = create.krnl.loadIE(inputOperand, inputIndices);
-                  create.krnl.storeIE(val, dataCol, {c, col_index});
+                  create.krnl.storeIE(val, dataCol, {col_index, c});
                 }, 
                 [&](const SCFBuilder &createSCF){
                   // FALSE
                   Value zeroVal = create.math.constant(elementType, 0);
-                  create.krnl.storeIE(zeroVal, dataCol, {c, col_index});
+                  create.krnl.storeIE(zeroVal, dataCol, {col_index, c});
                 });
           });
 
   // GEMM
 
-      MemRefType filterColType = MemRefType::get({mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic}, elementType);
-      Value filterCol = create.mem.alignedAlloc(filterColType, {COPerGroup, dataColRows});
+      SmallVector<int64_t, 2> filterColShape = {mlir::ShapedType::kDynamic, mlir::ShapedType::kDynamic};
+      if (COPerGroup.isLiteral() && p_limit_padded.isLiteral()) {
+          filterColShape[0] = COPerGroup.getLiteral();
+          filterColShape[1] = p_limit_padded.getLiteral();
+      }
+      MemRefType filterColType = MemRefType::get(filterColShape, elementType);
+
+      Value filterCol = create.mem.alignedAlloc(filterColType, {COPerGroup, p_limit_padded});
+
+      Value zeroValF = create.math.constant(elementType, 0);
+      ValueRange zeroFilterLoops = create.krnl.defineLoops(2);
+      create.krnl.iterateIE(zeroFilterLoops, zeroFilterLoops, {LitIE(0), LitIE(0)}, {COPerGroup, p_limit_padded},
+          [&](const KrnlBuilder &b, ValueRange indices) {
+              // Convertimos el ValueRange a IndexExpr
+              DimIndexExpr i0(indices[0]);
+              DimIndexExpr i1(indices[1]);
+              b.storeIE(zeroValF, filterCol, {i0, i1});
+          });
 
       ValueRange flattenLoops = create.krnl.defineLoops(2);
       SmallVector<IndexExpr, 2> flattenLbs = {LitIE(0), LitIE(0)};
@@ -199,7 +235,7 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
 
       IndexExpr n_limit = DimIE(COPerGroup);  // Rows of A
       IndexExpr m_limit = OH * OW;            // Columns of B (how many pixels in the output)
-      IndexExpr p_limit = dataColRows;        // Cols of A and Rows of B (kernel size)
+      IndexExpr p_limit = p_limit_padded;        // Cols of A and Rows of B (kernel size)
 
       ValueRange gemmLoops = create.krnl.defineLoops(2);
       SmallVector<IndexExpr, 2> gemmLbs = {LitIE(0), LitIE(0)};
@@ -254,8 +290,8 @@ void convGEMM(ConversionPatternRewriter &rewriter, ONNXConvOp &convOp,
 
                       // Now we have clean indexes here
                       SmallVector<IndexExpr, 2> A_dimensions = {i, k};
-                      SmallVector<IndexExpr, 2> B_dimensions = {k, j};
-                      
+                      SmallVector<IndexExpr, 2> B_dimensions = {j, k};
+
                       Value aVal = createK.krnl.loadIE(filterCol, A_dimensions);
                       Value bVal = createK.krnl.loadIE(dataCol, B_dimensions);
 
