@@ -18,6 +18,8 @@
 #include "mlir/Dialect/Shape/IR/Shape.h"
 #include "mlir/Dialect/Vector/IR/VectorOps.h"
 
+#include "mlir/Dialect/Func/IR/FuncOps.h"
+
 #include "src/Accelerators/Accelerator.hpp"
 #include "src/Builder/ModelInputShaper.hpp"
 #include "src/Compiler/OptionUtils.hpp"
@@ -370,6 +372,53 @@ void FrontendToKrnlLoweringPass::runOnOperation() {
   // expressions in index access patterns).
   DimAnalysis *dimAnalysis = new DimAnalysis(module);
   dimAnalysis->analyze();
+
+  // Time Profiler
+  bool needsProfiler = false;
+
+  module.walk([&](Operation *op) {
+    StringRef opName = op->getName().getStringRef();
+    if (opName == "onnx.MatMul" || opName == "onnx.Conv") {
+      needsProfiler = true;
+    }
+  });
+  
+  if(needsProfiler){
+    OpBuilder moduleBuilder(module.getBodyRegion());
+    auto loc = moduleBuilder.getUnknownLoc();
+
+    auto declareFunc = [&](StringRef funcName) {
+      if (!module.lookupSymbol<func::FuncOp>(funcName)) {
+        auto funcOp = moduleBuilder.create<func::FuncOp>(loc, funcName, moduleBuilder.getFunctionType({}, {}));
+        funcOp.setPrivate();
+      }
+    };
+
+    declareFunc("start_timer");
+    declareFunc("stop_timer_conv");
+    declareFunc("stop_timer_matmul");
+
+    // We search for MatMul and Conv operations
+    module.walk([&](Operation *op) {
+      StringRef opName = op->getName().getStringRef();
+
+      if (opName == "onnx.MatMul" || opName == "onnx.Conv") {
+        // 1. Insert start of the clock BEFORE the operation
+        OpBuilder builder(op);
+        builder.setInsertionPoint(op);
+        auto startFunc = builder.getStringAttr("start_timer");
+        builder.create<func::CallOp>(op->getLoc(), startFunc, TypeRange{}, ValueRange{});
+
+        // 2. Insert end of the clock AFTER the operation
+        builder.setInsertionPointAfter(op);
+        StringAttr stopFunc = (opName == "onnx.Conv") ? 
+                              builder.getStringAttr("stop_timer_conv") : 
+                              builder.getStringAttr("stop_timer_matmul");
+        builder.create<func::CallOp>(op->getLoc(), stopFunc, TypeRange{}, ValueRange{});
+      }
+    });
+  }
+  // End of Time Profiler
 
   // The first thing to define is the conversion target. This will define the
   // final target for this lowering.
